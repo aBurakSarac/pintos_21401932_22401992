@@ -315,6 +315,7 @@ run_actions (char **argv)
     {
       {"run", 2, run_task},
 			{"hello", 1, run_hello},
+      {"", 0, run_hello},
 #ifdef FILESYS
       {"ls", 1, fsutil_ls},
       {"cat", 2, fsutil_cat},
@@ -324,11 +325,6 @@ run_actions (char **argv)
 #endif
       {NULL, 0, NULL},
     };
-	
-	if (*argv == NULL)
-	{
-		run_hello();
-	}
 
   while (*argv != NULL)
     {
