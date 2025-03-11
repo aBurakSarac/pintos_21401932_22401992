@@ -292,6 +292,11 @@ run_task (char **argv)
   printf ("Execution of '%s' complete.\n", task);
 }
 
+run_hello ()
+{
+	printf("Hello, World!\n");
+}
+
 /* Executes all of the actions specified in ARGV[]
    up to the null pointer sentinel. */
 static void
@@ -309,6 +314,8 @@ run_actions (char **argv)
   static const struct action actions[] = 
     {
       {"run", 2, run_task},
+			{"hello", 1, run_hello},
+      {"", 0, run_hello},
 #ifdef FILESYS
       {"ls", 1, fsutil_ls},
       {"cat", 2, fsutil_cat},
