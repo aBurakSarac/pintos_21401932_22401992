@@ -31,6 +31,7 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 static struct ordered_list sleeping;
+void timer_wake_up_thread(void);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -178,6 +179,18 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
+
+void
+timer_wake_up_thread(void) {
+  enum intr_level old_level = intr_disable(); 
+
+  while (!ordered_list_is_empty(&sleeping) && ordered_list_peek(&sleeping) <= ticks) {
+      thread_unblock(ordered_list_pop(&sleeping)); 
+  }
+
+  intr_set_level(old_level);
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
@@ -187,16 +200,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
   timer_wake_up_thread();
 }
 
-static void
-timer_wake_up_thread() {
-  enum intr_level old_level = intr_disable(); 
-
-  while (!ordered_list_is_empty(&sleeping) && ordered_list_peek(&sleeping) <= ticks) {
-      thread_unblock(ordered_list_pop(&sleeping)); 
-  }
-
-  intr_set_level(old_level);
-}
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
