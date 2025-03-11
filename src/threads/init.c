@@ -64,6 +64,7 @@ static char **read_command_line (void);
 static char **parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
+static void run_hello (void);
 
 #ifdef FILESYS
 static void locate_block_devices (void);
@@ -292,6 +293,7 @@ run_task (char **argv)
   printf ("Execution of '%s' complete.\n", task);
 }
 
+static void
 run_hello ()
 {
 	printf("Hello, World!\n");
@@ -315,7 +317,6 @@ run_actions (char **argv)
     {
       {"run", 2, run_task},
 			{"hello", 1, run_hello},
-      {"", 0, run_hello},
 #ifdef FILESYS
       {"ls", 1, fsutil_ls},
       {"cat", 2, fsutil_cat},
@@ -325,6 +326,12 @@ run_actions (char **argv)
 #endif
       {NULL, 0, NULL},
     };
+
+    	
+  if (*argv == NULL)
+  {
+  	run_hello();
+  }
 
   while (*argv != NULL)
     {
