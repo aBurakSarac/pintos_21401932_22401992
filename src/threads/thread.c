@@ -228,22 +228,33 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
-void
-thread_unblock (struct thread *t) 
-{
-  enum intr_level old_level;
-
-  ASSERT (is_thread (t));
-
-  old_level = intr_disable ();
-  ASSERT (t->status == THREAD_BLOCKED);
-  t->status = THREAD_READY;
-  list_insert_ordered(&ready_list, &t->elem, thread_cmp_priority, NULL);
-  intr_set_level (old_level);
-  
-	if (t->priority > thread_current()->priority && thread_current() != idle_thread)
-		thread_yield();
-}
+	 void
+	 thread_unblock (struct thread *t) 
+	 {
+		 enum intr_level old_level;
+	 
+		 ASSERT (is_thread (t));
+	 
+		 old_level = intr_disable ();
+		 ASSERT (t->status == THREAD_BLOCKED);
+		 t->status = THREAD_READY;
+		 list_insert_ordered(&ready_list, &t->elem, thread_cmp_priority, NULL);
+		 printf("Thread %s priority: %d\n", t->name, t->priority);
+	 
+		 // Print the ready list after the thread is unblocked
+		 printf("Ready list after unblocking:\n");
+		 struct list_elem *e;
+		 for (e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)) {
+			 struct thread *t_in_list = list_entry(e, struct thread, elem);
+			 printf("Thread %s with priority %d\n", t_in_list->name, t_in_list->priority);
+		 }
+		 printf("\n\n");
+	 
+		 intr_set_level (old_level);
+		 
+		 if (t->priority >= thread_get_priority() && !strcmp(thread_current()->name, "main"))
+			 thread_yield();
+	 }
 
 /* Returns the name of the running thread. */
 const char *
@@ -311,7 +322,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, thread_cmp_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -338,14 +349,20 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  if (thread_current()->priority == new_priority)
+		return;
+	
+	thread_current()->priority = new_priority;
+	if (thread_current()->priority < next_thread_to_run()->priority) {
+		thread_yield();
+	}
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current()->priority;
 }
 
 /* Compare the priority of two threads. */
