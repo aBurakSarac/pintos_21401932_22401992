@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -23,6 +24,13 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* Niceness values. */
+#define NICE_MIN -20
+#define NICE_DEFAULT 0
+#define NICE_MAX 20
+
+#define RECENT_CPU_DEFAULT 0
 
 /* A kernel thread or user process.
 
@@ -87,8 +95,13 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    int priority;                      /* Priority. */
+    int primary_priority;
     struct list_elem allelem;           /* List element for all threads list. */
+    struct lock *waiting_on_lock;
+    struct list held_locks;
+    int nice;
+    fixed recent_cpu;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -132,6 +145,9 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+bool thread_cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+int handle_priority(struct thread *t);
+void donate_priority(struct thread *t);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
