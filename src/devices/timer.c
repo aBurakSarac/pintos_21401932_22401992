@@ -182,13 +182,9 @@ timer_print_stats (void)
 
 void
 timer_wake_up_thread(void) {
-  enum intr_level old_level = intr_disable(); 
-
   while (!ordered_list_is_empty(&sleeping) && ordered_list_peek(&sleeping) <= ticks) {
       thread_unblock(ordered_list_pop(&sleeping)); 
   }
-
-  intr_set_level(old_level);
 }
 
 /* Timer interrupt handler. */

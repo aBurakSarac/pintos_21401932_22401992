@@ -122,7 +122,7 @@ sema_up (struct semaphore *sema)
   }*/
   sema->value++;
   struct list_elem *highest;
-  highest = list_max(&sema->waiters, thread_cmp_priority, NULL);
+  highest = list_min(&sema->waiters, thread_cmp_priority, NULL);
   if(highest!=list_end(&sema->waiters)){
     list_remove(highest);
     thread_unblock(list_entry(highest, struct thread, elem));
