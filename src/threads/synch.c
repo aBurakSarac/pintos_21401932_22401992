@@ -292,7 +292,6 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
-    struct thread *thread;                   /* The thread that is waiting on this semaphore. */
   };
 
 /* Initializes condition variable COND.  A condition variable
@@ -335,8 +334,6 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
-  
-  waiter.thread = thread_current();
 
   sema_init (&waiter.semaphore, 0);
   list_push_back (&cond->waiters, &waiter.elem);
@@ -391,12 +388,15 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
    
-static bool
+bool
 sema_cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
-  const struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
-  const struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
-  
-  return sema_a->thread->priority < sema_b->thread->priority;
+  const struct semaphore_elem *s1 = list_entry(a, struct semaphore_elem, elem);
+  const struct semaphore_elem *s2 = list_entry(b, struct semaphore_elem, elem);
+  struct list_elem *max1 = list_max(&s1->semaphore.waiters, thread_cmp_priority, NULL);
+  struct list_elem *max2 = list_max(&s2->semaphore.waiters, thread_cmp_priority, NULL);
+  struct thread *t1 = list_entry(max1, struct thread, elem);
+  struct thread *t2 = list_entry(max2, struct thread, elem);
+
+  return t1->priority < t2->priority;
 }
-   

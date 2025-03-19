@@ -92,11 +92,11 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{1em}
 
-\title{INF333 2023-2024 Spring Semester}
+\title{INF333 2024-2025 Spring Semester}
 \author{
-\textbf{\color{blue}{Şirinler}} {\small(your group name, use an appropriate color)}
-\\ Student 1 Name <stu1@gsu.edu.tr>
-\\ Student 2 Name <stu2@gsu.edu.tr>}
+\textbf{\color{teal}{Pintocchio}} 
+\\ Sude Melis Pilaz <22401992@ogr.gsu.edu.tr>
+\\ Ali Burak Saraç <21401932@ogr.gsu.edu.tr>}
 
 \begin{document}
 
@@ -110,19 +110,39 @@ Please provide answers inline in a \texttt{quote} environment.
 
 \section{Preliminaries}
 
-\textbf{Q1:} If you have any preliminary comments on your submission, notes for
-the TAs, or extra credit, please give them here.
+\textbf{Q1:} If you have any preliminary comments on your submission, notes for the TAs, or extra credit, please give them here.
 \begin{quote}
-  Answer here
+On our initial plans, we aimed to implement a heap for ordering our sleeping
+	threads by their wake-up times. Thus, as a sketch, we designed our own list
+	structure to keep it separated from other lists. However, we realized that
+	heap structure could not dynamically reallocate and we had to change our design
+	to a simple linked list. At this stage, it would cause a lot of complexities
+	to switch to the already implemented list structure. Therefore, we decided
+	to keep our design as it is and implement the linked list structure. We are
+	aware that our design is not the most efficient one, but we believe that it is
+	the most suitable one for our current implementation.
 \end{quote}
 
 
-\textbf{Q2:} Please cite any offline or online sources you consulted while
-preparing your submission, other than the Pintos documentation, course text, and
-lecture notes.
-
+\textbf{Q2:} Please cite any offline or online sources you consulted while preparing your
+submission, other than the Pintos documentation, course text, and lecture notes.
 \begin{quote}
-  Answer here
+  \begin{itemize}
+    \item Silberschatz, A., Galvin, P. B., \& Gagne, G. (2018). \\
+    \textit{Operating System Concepts} (10th ed.). Wiley.
+    
+    \item Stanford University. (2024). \\
+    \textit{CS212 Operating Systems Lecture Notes}. \\
+    \url{https://www.scs.stanford.edu/24wi-cs212/notes/}
+    
+    \item University of California, Berkeley. (n.d.). \\
+    \textit{Operating Systems and Systems Programming Webcast Lectures}. \\
+    \href{https://archive.org/details/ucberkeley-webcast-PL-XXv-cvA_iBDyz-ba4yDskqMDY6A1w_c}{%
+      \nolinkurl{https://archive.org/details/ucberkeley-webcast}}
+
+    \item jenson.gitbooks.io\\
+    \url{https://jeason.gitbooks.io/pintos-reference-guide-sysu/content/priority_donating.html}
+  \end{itemize}
 \end{quote}
 
 
@@ -130,68 +150,104 @@ lecture notes.
 
 \subsection{Data Structures}
 
-\textbf{Q3:} Copy here the declaration of each new or changed `struct' or
-`struct' member, global or static variable, `typedef', or enumeration.
+\textbf{Q3:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.
 
 Identify the purpose of each in 25 words or less.
 \begin{quote}
-  Answer here
+
+static struct ordered\_list sleeping: ordered list consisting of sleeping threads and their wake up times\\
+\\
+struct ordered\_list: custom ordered list containing wake up time information for each thread\\
+struct ordered\_list\_elem *head: Pointer to the first element (earliest wake-up time)\\
+\\
+struct ordered\_list\_elem:  list element for ordered list\\
+struct thread *t : pointer to the sleeping thread\\
+int64\_t wake\_up\_time: time when the thread should wake up\\
+struct\ ordered\_list\_elem *next : pointer to the next element in the list\\
+
 \end{quote}
 
 
 \subsection{Algorithms}
 
 
-\textbf{Q4:} Briefly describe your implementation of \texttt{thread\_join()} and
-how it interacts with thread termination.
-
+\textbf{Q4:} Briefly describe your implementation of \texttt{thread\_join()} and how it interacts with thread termination.
 \begin{quote}
-  Answer here
+
+In Pintos, we did not use a thread\_join() function. 
+	Instead, parent thread blocks itself until its child finishes execution. 
+	This blocking is done using thread\_block() and later unblocking with thread\_unblock() 
+	when the child terminates.
+We implemented a sleep list to keep track of sleeping threads. When a thread
+  calls thread\_sleep, the thread is added to the sleep list with its wake-up time. 
+	The thread gets blocked and starts waiting. The timer\_interrupt 
+  function checks the sleep list each tick and wakes up the threads when their time comes. 
+	The thread is then removed from the sleep and waiting lists. 
+	The thread is then unblocked and added to the ready list. This method
+  avoids busy waiting and allows the thread to sleep until its wake-up time.
 \end{quote}
 
-\textbf{Q5:} What steps are taken to minimize the amount of time spent in the
-timer interrupt handler?
-
+\textbf{Q5:} What steps are taken to minimize the amount of time spent in the timer interrupt handler?
 \begin{quote}
-  Answer here
+  By using an ordered list, the interrupt handler efficiently checks only the thread with the shortest wake-up time, avoiding unnecessary comparisons. Any unnecessary or complex operation is avoided to keep timer interrupt as simple as possible.
 \end{quote}
 
 
 \subsection{Synchronization}
 
-\textbf{Q6:} Consider parent thread \texttt{P} with child thread \texttt{C}.
-How do you ensure proper synchronization and avoid race conditions when
-\texttt{P} calls \texttt{wait(C)} before \texttt{C} exits?  After \texttt{C}
-exits?  How do you ensure that all resources are freed in each case?  How about
-when \texttt{P} terminates without waiting, before \texttt{C} exits?  After
-\texttt{C} exits?  Are there any special cases?
-
+\textbf{Q6:} Consider parent thread \texttt{P} with child thread \texttt{C}.  How do you ensure proper synchronization and avoid race conditions when \texttt{P} calls \texttt{wait(C)} before \texttt{C} exits?  After \texttt{C} exits?  How do you ensure that all resources are freed in each case?  How about when \texttt{P} terminates without waiting, before \texttt{C} exits?  After \texttt{C} exits?  Are there any special cases?
 \begin{quote}
-  Answer here
+  When P calls wait(C) before C exits, P will be blocked until C exits. C wakes up
+normally when its wake-up time is reached. When C wakes up, it will signal its parent
+thread to wake up.
+
+When P calls wait(C) after C exits, C would be already exited and the parent thread
+would read the exit status of C and continue its execution. C's resources would be
+freed when P reads the exit status of C. 
+
+When P terminates without waiting, before C exits, C detects that its parent thread
+has exited. C will clean up its resources itself. 
+
+When P terminates without waiting, after C exits, P reads and frees C's exit status and 
+continues its execution.
 \end{quote}
 
-\textbf{Q7:} How are race conditions avoided when multiple threads call
-\texttt{timer\_sleep()} simultaneously?
-
+\textbf{Q7:} How are race conditions avoided when multiple threads call \texttt{timer\_sleep()} simultaneously?
 \begin{quote}
-  Answer here
+Race conditions are avoided by disabling the interrupts in critical operations.
+	With this approach it’s ensured that no other thread or interrupt can modify
+	the sleeping list or the state of the current thread during operations. Inserting
+	threads to sleep list and blocking thread operations can be performed safely.
+	This way, the list integrity is maintained while multiple threads are calling
+	timer\_sleep() simultaneously.
 \end{quote}
 
-\textbf{Q8:} How are race conditions avoided when a timer interrupt occurs
-during a call to \texttt{timer\_sleep()}?
-
+\textbf{Q8:} How are race conditions avoided when a timer interrupt occurs during a call to \texttt{timer\_sleep()}?
 \begin{quote}
-  Answer here
+During critical operations, such as modifying the sleep list, interrupts are
+disabled to prevent race conditions during timer\_sleep(). This ensures that the
+timer interrupt handler does not interfere with the sleep list or change the
+state of the sleeping threads. The thread is blocked only after the list update is complete, ensuring the timer interrupt can properly wake it later. By disabling interrupts inside thread\_unblock which is called by timer\_interrupt, we ensure that atomicity of both functions
+	are preserved.
 \end{quote}
 
 
 \subsection{Rationale}
 
-\textbf{Q9:} Critique your design, pointing out advantages and disadvantages in
-your design choices.
-
+\textbf{Q9:} Critique your design, pointing out advantages and disadvantages in your design choices.
 \begin{quote}
-  Answer here
+As stated above, we initially aimed to implement a heap structure for the ordered list. However, we had to change our design to a simple linked list due to memory overflow. This change caused our design to be more difficult to understand and decreased readability. If we hadn't planned to implement a heap structure from the beginning, we could have used the already imple
+mented list structure in Pintos. In result, our wake\_up\_time also became a 
+separate variable, rather than a property of the thread, being different from
+other elements.
+Besides this, in thread\_sleep function, we preferred to disable interrupts,
+while the alternative would be to use a lock. We believe that disabling
+interrupts is more efficient and less complex than using a lock.
+
+An advantage of our function is that timer\_interrupt function is kept simple
+and efficient. By using an ordered list, the interrupt handler efficiently
+checks only the thread with the shortest wake-up time, avoiding unnecessary
+comparisons, resulting in O(1) time complexity.
 \end{quote}
 
 
@@ -201,158 +257,234 @@ your design choices.
 
 \subsection{Data Structures}
 
-\textbf{Q10:} Copy here the declaration of each new or changed `struct' or
-`struct' member, global or static variable, `typedef', or enumeration.  Identify
-the purpose of each in 25 words or less
-
+\textbf{Q10:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less
 \begin{quote}
-  Answer here
+in struct thread:\\
+int primary\_priority: priority of a thread donations excluded.\\
+struct lock *waiting\_on\_lock: lock that the thread currently waiting on\\
+struct list held\_locks:  list of locks held by the thread. threads which are waiting for this thread are accessible using the waiters list of semaphore structure in each lock\\
+\\
+in struct lock:\\
+struct list\_elem elem\_lock: lock element to add to a locks list(held\_locks specifically) without causing conflict.\\
+\\
 \end{quote}
 
-\textbf{Q11:} Describe the sequence of events when a call to
-\texttt{lock\_acquire()} causes a priority donation.  How is nested donation
-handled?
-
+\textbf{Q11:} Describe the sequence of events when a call to \texttt{lock\_acquire()} causes a priority donation.  How is nested donation handled?
 \begin{quote}
-  Answer here
+When lock\_acquire is called and the lock is already held by another thread, and the current thread has a higher priority than the holder, donate\_priority is called. donate\_priority is a function that traverses the chain of locks that the current thread is waiting on and donates priority as necessary. Nested donation is handled using this loop in donate\_priority. Priority donation is handled for the current thread and then the thread that is holding the lock. This process continues until the maximum depth is reached. handle\_priority function is called before donation to ensure
+that the priority is recalculated correctly. 
 \end{quote}
 
-\textbf{Q12:} Describe the sequence of events when \texttt{lock\_release()} is
-called on a lock that a higher-priority thread is waiting for.
-
+\textbf{Q12:} Describe the sequence of events when \texttt{lock\_release()} is called on a lock that a higher-priority thread is waiting for.
 \begin{quote}
-  Answer here
+When lock\_release is called, the lock is removed from the held locks list of the current
+thread. The priority of the current thread is recalculated using the handle\_priority function.
+handle\_priority function recalculates the priority by iterating through the locks that the current
+thread holds and finding the maximum priority of the threads waiting on the locks. The waiters list
+of the semaphore is used for finding the waiting threads. The priority of the current thread is then
+updated. The lock holder is set to NULL and the semaphore is upped. 
 \end{quote}
 
 \subsection{Synchronization}
  
-\textbf{Q13:} Describe a potential race in \texttt{thread\_set\_priority()} and
-explain how your implementation avoids it. Can you use a lock to avoid this
-race?
-
+\textbf{Q13:} Describe a potential race in \texttt{thread\_set\_priority()} and explain how your implementation avoids it. Can you use a lock to avoid this race?
 \begin{quote}
-  Answer here
+A potential race occurs when two different threads try to set their priority at the same time.
+If both threads are trying to access shared data like the ready\_list their operations can interfere
+with each other. 
+
+The solution we implemented is to disable interrupts during the critical
+	section of the thread\_set\_priority function. This way, we ensure that no other
+	thread or interrupt can modify the shared data while the priority is being
+	set.
+
+We can't use a lock to avoid this race. Because when a thread which helds helds locks calls 
+thread\_set\_priority but a lower priority thread is already holding priority lock, the thread\_set\_priority function will be blocked. This will cause a deadlock.
 \end{quote}
 
 \subsection{Rationale}
 
-\textbf{Q14:} Why did you choose this design?  In what ways is it superior to
-another design you considered?
-
+\textbf{Q14:} Why did you choose this design?  In what ways is it superior to another design you considered?
 \begin{quote}
-  Answer here
+  Our design uses held\_locks list and waiting\_on\_lock in each thread to keep track of the priority donations.
+ At first we considered having a waiting threads list but even then we needed the locks associated with the threads.
+ But having a separated waiting threads list would duplicate the information and make the implementation more complex.
+ Our design is superior to this approach because it is more efficient and simple.
 \end{quote}
 
 \section{Advanced Scheduler}
 
 \subsection{Data Structures}
 
-\textbf{Q15:} Copy here the declaration of each new or changed `struct' or
-`struct' member, global or static variable, `typedef', or enumeration.  Identify
-the purpose of each in 25 words or less.
-
+\textbf{Q15:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less.
 \begin{quote}
-  Answer here
+int nice: determines how "nice" the thread should be to other threads. Decreases the priority of a thread and causes it to give up some CPU time it would otherwise receive.\\
+fixed recent\_cpu: measure how much CPU time each process has received "recently."\\
+static fixed load\_avg: moving average of the number of threads ready to run.\\
+typedef int64\_t fixed: type definition for fixed point numbers\\
 \end{quote}
 
 \subsection{Algorithms}
 
-\textbf{Q16:} Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
-has a recent\_cpu value of 0.  Fill in the table below showing the scheduling
-decision and the priority and recent\_cpu values for each thread after each
-given number of timer ticks:
+\textbf{Q16:} Suppose threads A, B, and C have nice values 0, 1, and 2.  Each has a recent\_cpu value of 0.  Fill in the table below showing the scheduling decision and the priority and recent\_cpu values for each thread after each given number of timer ticks:
+
+\begin{quote}
+priority, recent\_cpu and load\_avg are calculated by formulas below:\\
+priority = PRI\_MAX - ROUND((recent\_cpu / 4) - (nice * 2))\\
+recent\_cpu = (2 * load\_avg) / (2 * load\_avg + 1) * recent\_cpu + nice\\
+load\_avg = (59/60) * load\_avg + (1/60) * ready\_threads
+
+Priority is updated every 4 ticks, and recent\_cpu and load\_avg is updated every second meaning
+every 100 ticks. The initial value of load\_avg and recent\_cpu is 0.
+Besides these formulas, recent\_cpu is incremented by 1 for the running thread every timer tick.
+\end{quote}
 
 \small
 \begin{Verbatim}[frame=single]
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
-  0
-  4
-  8
- 12
- 16
- 20
- 24
- 28
- 32
- 36
+  0     0   0   0   63  61  59  A  
+  4     4   0   0   62  61  59  A
+  8     8   0   0   61  61  59  B
+ 12     8   4   0   61  60  59  A
+ 16     12  4   0   60  60  59  B 
+ 20     12  8   0   60  59  59  A 
+ 24     16  8   0   59  59  59  C
+ 28     16  8   4   59  59  58  B
+ 32     16  12  4   59  58  58  A
+ 36     20  12  4   58  58  58  C
 \end{Verbatim}
 
 
-\textbf{Q17:} Did any ambiguities in the scheduler specification make values in
-the table uncertain?  If so, what rule did you use to resolve them?  Does this
-match the behavior of your scheduler?
-
+\textbf{Q17:} Did any ambiguities in the scheduler specification make values in the table uncertain?  If so, what rule did you use to resolve them?  Does this match the behavior of your scheduler?
 \begin{quote}
-  Answer here
+  The scheduler did not specify how to handle situations where priorities of two threads are equal,
+but we resolved them by assuming round-robin scheduling. This matches the behavior of our scheduler.
+Another ambiguity was that the priority calculation should be made every 4th tick 
+and recent\_cpu calculation formula should be applied every tick, but we have no directives on
+doing it before or after scheduling and also which one to update first at every 4th tick.
+We decided to update the recent\_cpu first and then calculate the priority for that ticks and
+update these values before the next scheduling.
 \end{quote}
 
 
-\textbf{Q18:} How is the way you divided the cost of scheduling between code
-inside and outside interrupt context likely to affect performance?
-
+\textbf{Q18:} How is the way you divided the cost of scheduling between code inside and outside interrupt context likely to affect performance?
 \begin{quote}
-  Answer here
+The implementation of the scheduler divides scheduling costs by handling the
+lighter operations in the interrupt context, such as updating the recent\_cpu,
+	tracking ticks and making preemptions, while leaving heavier operations
+	outside the interrupt context. However, some expensive computations like
+	recalculating recent\_cpu and load\_avg, and sorting the ready list are done
+	within the interrupt context. This doesn't affect the performance for the
+	small number of threads, but it may cause performance issues when the
+	number of threads increases. With more time and experience with Pintos,
+	we could optimize the scheduler to improve performance, moving these operations
+	outside the interrupt context.
 \end{quote}
 
 \subsection{Rationale}
 
-\textbf{Q19:} Briefly critique your design, pointing out advantages and
-disadvantages in your design choices.  If you were to have extra time to work on
-this part of the project, how might you choose to refine or improve your design?
-
+\textbf{Q19:} Briefly critique your design, pointing out advantages and disadvantages in your design choices.  If you were to have extra time to work on this part of the project, how might you choose to refine or improve your design?
 \begin{quote}
-  Answer here
+  We designed our project for simplicity and modularity. We implemented
+	fixed-point math as a dedicated abstraction layer using macros. This
+	implementation is more modular, easier to maintain and debug, and
+	accessible from all the files. Also, it prevents code duplication and makes
+	the code more readable. However, we could improve our design by
+	optimizing the scheduler to improve performance. We could move some
+	operations outside the interrupt context to reduce the time spent in the
+	interrupt handler. We could also optimize the priority calculation and
+	thread sorting to improve the performance of the scheduler.
+	With more time and experience with Pintos, maybe with some guidance
+	from the TAs, we could refine our design to make it more efficient and
+	optimized.
 \end{quote}
 
-\textbf{Q20:} The assignment explains arithmetic for fixed-point math in detail,
-but it leaves it open to you to implement it.  Why did you decide to implement
-it the way you did?  If you created an abstraction layer for fixed-point math,
-that is, an abstract data type and/or a set of functions or macros to manipulate
-fixed-point numbers, why did you do so?  If not, why not?
-
+\textbf{Q20:} The assignment explains arithmetic for fixed-point math in detail, but it leaves it open to you to implement it.  Why did you decide to implement it the way you did?  If you created an abstraction layer for fixed-point math, that is, an abstract data type and/or a set of functions or macros to manipulate fixed-point numbers, why did you do so?  If not, why not?
 \begin{quote}
-  Answer here
+We decided to implement fixed-point math as a dedicated abstraction layer. Using macros and a fixed\_point.h file containing
+the necessary definitions. We decided to use macros instead of functions because macros are faster and fixed point operations are generally 
+handled when timer\_interrupt handler is called so we need to make it as fast as possible.
+This way, we can easily change the implementation of fixed-point math if needed.
+This implementation is more modular, easier to maintain and debug and accessible from all the files.
+Also it prevents code duplication and makes the code more readable. 
 \end{quote}
 
 \section{Survey Questions}
 
 Answering these questions is optional, but it will help us improve the course in future quarters.  Feel free to tell us anything you want--these questions are just to spur your thoughts.  You may also choose to respond anonymously in the course evaluations at the end of the quarter.
 
-\textbf{Q1:} In your opinion, was this assignment, or any one of the three
-problems in it, too easy or too hard?  Did it take too long or too little time?
-
+\textbf{Q1:} In your opinion, was this assignment, or any one of the three problems in it, too easy or too hard?  Did it take too long or too little time?
 \begin{quote}
-  Answer here
+  We sincerely believe that the assignment was very challenging. The problems were
+	complex and required a deep understanding of the Pintos operating system. The
+	assignment took a lot of time to complete, and many problems we encountered
+	were because of our lack of experience with Pintos. The main problem for this
+	project was the lack of guidance and examples. Not only the assignment but also
+	the Pintos documentation was not very helpful. We believe that the assignment
+	would be more manageable if there were more examples and guidance on how to
+	approach the problems.
 \end{quote}
 
-\textbf{Q2:} Did you find that working on a particular part of the assignment
-gave you greater insight into some aspect of OS design?
-
+\textbf{Q2:} Did you find that working on a particular part of the assignment gave you greater insight into some aspect of OS design?
 \begin{quote}
-  Answer here
+ Interestingly enough, we found that working on the priority scheduling part of the
+	assignment gave us greater insight into the synchronization and scheduling aspects
+	of OS design. We learned how to handle priority donations and how to implement
+	a priority scheduler. However, probably speaking on behalf of all groups, we
+	believe that the assignment would be more beneficial if it were divided into smaller
+	parts and more guidance was provided on how to approach the problems. More hints on
+	the problems we were expected to encounter and how to solve them would be very
+	helpful and let us focus on the main problems of the assignment rather than getting
+	stuck on the details.
 \end{quote}
 
-\textbf{Q3:} Is there some particular fact or hint we should give students in
-future quarters to help them solve the problems?  Conversely, did you find any
-of our guidance to be misleading?
-
+\textbf{Q3:} Is there some particular fact or hint we should give students in future quarters to help them solve the problems?  Conversely, did you find any of our guidance to be misleading?
 \begin{quote}
-  Answer here
+   It would be very helpful if the lab projects we do in the course were more
+	aligned with the assignment. We believe that the labs should be designed to
+	prepare us for the assignment and help us understand the concepts better. For
+	example, the labs could be designed to help us understand the Pintos operating
+	system better and how to approach the problems in the assignment. For example,
+	installing Pintos or writing Git commands were helpful for the project. But
+	the timing for the git commands lab was not very good. If it were done before,
+	say the first week of the project, we could benefit from the git more effectively.
 \end{quote}
 
-\textbf{Q4:} Do you have any suggestions for the TAs to more effectively assist
-students, either for future quarters or the remaining projects?
-
+\textbf{Q4:} Do you have any suggestions for the TAs to more effectively assist students, either for future quarters or the remaining projects?
 \begin{quote}
-  Answer here
+  Please provide more examples and guidance on how to approach the problems.
+	Sparing some time to talk, debate on the project in the classroom could be
+	an effective way to help students understand the concepts better, making the lessons
+	more interactive. Having short conversations about the common problems, key aspects
+	of the project before or after the lessons could prove to be very beneficial.
+	This is a popular method in many universities and it is proven to be very effective.
+
+    Sparing some time to talk, debate on the project in the classroom could be
+	an effective way to help students understand the concepts better, making the lessons
+	more interactive. Having short conversations about the common problems, key aspects
+	of the project before or after the lessons could prove to be very beneficial.
+	This is a popular method in many universities and it is proven to be very effective.
 \end{quote}
 
 \textbf{Q5:} Any other comments?
-
 \begin{quote}
-  Answer here
+Thank you for taking an interest in our feedback. We believe that the course
+	could be steered in a more beneficial direction if the suggestions we provided
+	above were taken into consideration. If the difficulty of the assignments could
+	be balanced, we believe we can learn many things from this course.
+
+	Out of topic, but another feedback we would like to give is about the lab sessions.
+	Currently, the lab sessions try to cover different topics in a short time.
+	These topics are very important and should be covered in detail. The topics
+	we discovered so far (Linux, Assembly, Git, etc.) are huge and require a lot
+	of time to understand clearly, they are fundamentals of many other topics.
+	We believe that the lab sessions should be more focused on only a few of them
+	and should be more detailed. This way, we can understand the topics better
+	and benefit more from the labs. And it would be wonderful if our lab sessions
+	were targeting the problems we would encounter in the projects. This way, we
+	can understand the concepts better and apply them to the projects more effectively.
 \end{quote}
 
 
