@@ -20,6 +20,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+#define CMD_ARGS_MAX 8
+static int get_cmd_line(char *cmd, char *argv[], int max_args);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -197,7 +199,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, const char *cmdline);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -304,7 +306,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name))
     goto done;
 
   /* Start address. */
@@ -429,19 +431,64 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, const char *cmdline) 
 {
   uint8_t *kpage;
   bool success = false;
+  char *cmd_copy;
+  char *argv[CMD_ARGS_MAX];
+  int argc;
+
+  cmd_copy = palloc_get_page(0);
+  if (cmd_copy == NULL){
+    return false;
+  }
+  strlcpy(cmd_copy, cmdline, PGSIZE);
+  argc = get_cmd_line(cmd_copy, argv, CMD_ARGS_MAX);
+
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE - 12;
-      else
-        palloc_free_page (kpage);
+      if (success){
+        char *stack_ptr = (char *)PHYS_BASE;
+        uint32_t *arg_addr[CMD_ARGS_MAX];
+        int i;
+
+        for (i = argc - 1; i >= 0; i--) {
+          size_t len = strlen(argv[i]) + 1; 
+          stack_ptr -= len;
+          memcpy(stack_ptr, argv[i], len);
+          arg_addr[i] = (uint32_t *)stack_ptr;
+        }
+
+        while ((uintptr_t)stack_ptr % 4 != 0) {
+          stack_ptr--;
+          *stack_ptr = 0;
+        }
+
+        stack_ptr -= 4;
+        *(uint32_t *)stack_ptr = 0;
+
+        for (i = argc-1; i >= 0; i--) {
+          stack_ptr -= 4;
+          *(uint32_t *)stack_ptr = (uint32_t)arg_addr[i];
+        }
+
+        uint32_t argv_ptr = (uint32_t)stack_ptr;
+        stack_ptr -= 4;
+        *(uint32_t *)stack_ptr = argv_ptr;
+
+        stack_ptr -= 4;
+        *(int *)stack_ptr = argc;
+
+        stack_ptr -= 4;
+        *(uint32_t *)stack_ptr = 0;
+        *esp = stack_ptr;
+    }
+    else
+      palloc_free_page (kpage);
     }
   return success;
 }
@@ -464,4 +511,16 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+static int
+get_cmd_line(char *cmd, char *argv[], int max_args) {
+  int argc = 0;
+  char *save_ptr = NULL;
+  char *token = strtok_r(cmd, " ", &save_ptr);
+  while (token != NULL && argc < max_args) {
+    argv[argc++] = token;
+    token = strtok_r(NULL, " ", &save_ptr);
+  }
+  return argc;
 }
