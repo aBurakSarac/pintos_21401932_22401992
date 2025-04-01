@@ -20,8 +20,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-#define CMD_ARGS_MAX 8
-static int get_cmd_line(char *cmd, char *argv[], int max_args);
+#define CMD_ARGS_MAX 32
+static int get_args(char *cmd, char *argv[]);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -199,7 +199,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, const char *cmdline);
+static bool setup_stack (void **esp, int argc, char *argv[]);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -225,11 +225,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  char *cmd_copy;
+  char *argv[CMD_ARGS_MAX];
+  int argc;
+
+  cmd_copy = palloc_get_page(0);
+  if (cmd_copy == NULL){
+    return false;
+  }
+  strlcpy(cmd_copy, file_name, PGSIZE);
+  argc = get_args(cmd_copy, argv);
+
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (argv[0]);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", argv[0]);
       goto done; 
     }
 
@@ -306,7 +317,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, file_name))
+  if (!setup_stack (esp, argc, argv))
     goto done;
 
   /* Start address. */
@@ -431,21 +442,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, const char *cmdline) 
+setup_stack (void **esp, int argc, char *argv[]) 
 {
   uint8_t *kpage;
   bool success = false;
-  char *cmd_copy;
-  char *argv[CMD_ARGS_MAX];
-  int argc;
-
-  cmd_copy = palloc_get_page(0);
-  if (cmd_copy == NULL){
-    return false;
-  }
-  strlcpy(cmd_copy, cmdline, PGSIZE);
-  argc = get_cmd_line(cmd_copy, argv, CMD_ARGS_MAX);
-
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -514,11 +514,11 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 static int
-get_cmd_line(char *cmd, char *argv[], int max_args) {
+get_args(char *cmd, char *argv[]) {
   int argc = 0;
   char *save_ptr = NULL;
   char *token = strtok_r(cmd, " ", &save_ptr);
-  while (token != NULL && argc < max_args) {
+  while (token != NULL && argc < CMD_ARGS_MAX) {
     argv[argc++] = token;
     token = strtok_r(NULL, " ", &save_ptr);
   }
