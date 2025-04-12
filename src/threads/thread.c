@@ -62,6 +62,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+static struct lock lock_find_tid;
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -306,6 +307,25 @@ tid_t
 thread_tid (void) 
 {
   return thread_current ()->tid;
+}
+
+struct thread *
+thread_get_by_tid (tid_t tid) 
+{
+  lock_acquire(&lock_find_tid);
+  struct list_elem *e;
+  struct thread *t = NULL;
+  for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) 
+  {
+    t = list_entry(e, struct thread, allelem);
+    if (t->tid == tid) 
+    {
+      lock_release(&lock_find_tid);
+      return t;
+    }
+  }
+  lock_release(&lock_find_tid);
+  return NULL;
 }
 
 /* Deschedules the current thread and destroys it.  Never
@@ -609,6 +629,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->waiting_on_lock = NULL;
   list_init(&t->held_locks);
   t->magic = THREAD_MAGIC;
+
+  #ifdef USERPROG
+    lock_init (&lock_find_tid);
+    t->pagedir = NULL;
+    t->cinfo = NULL;
+    list_init(&t->children);   
+  #endif
 
   if(thread_mlfqs && t != idle_thread)
   {

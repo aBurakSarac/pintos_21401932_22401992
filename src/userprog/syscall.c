@@ -26,6 +26,7 @@ static void syscall_handler (struct intr_frame *f) {
     int status;
     check_user_address(f->esp + sizeof(int));
     status = *(int *)(f->esp + sizeof(int));
+    thread_current()->exit_code = status;
     thread_exit();
   }
   else if(syscall_number==SYS_WRITE){

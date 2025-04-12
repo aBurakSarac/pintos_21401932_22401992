@@ -30,6 +30,17 @@ static int get_args(char *cmd, char *argv[]);
 tid_t
 process_execute (const char *file_name) 
 {
+  struct process_block *cinfo = palloc_get_page(0);
+  if (cinfo == NULL)
+    return TID_ERROR;
+
+  cinfo->tid = TID_ERROR;
+  cinfo->exit_status = -1;
+  cinfo->is_exited = false;
+  cinfo->waited = false;
+  sema_init(&cinfo->exit_sema, 0);
+  
+  char *cmd_copy = palloc_get_page(0);
   char *fn_copy;
   tid_t tid;
 
@@ -37,13 +48,42 @@ process_execute (const char *file_name)
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
+  {
+    palloc_free_page (cinfo);
     return TID_ERROR;
+  }
+  if (cmd_copy == NULL) 
+  {
+    palloc_free_page(cinfo);
+    return TID_ERROR;
+  }
   strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy(cmd_copy, file_name, PGSIZE);
+  char *save_ptr=NULL;
+  char *argv0 = strtok_r(cmd_copy, " ", &save_ptr);
+  if (argv0 == NULL) {
+    palloc_free_page(cmd_copy);
+    palloc_free_page(cinfo);
+    return TID_ERROR;
+  }
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  tid = thread_create (argv0, PRI_DEFAULT, start_process, fn_copy);
+  if (tid == TID_ERROR){
     palloc_free_page (fn_copy); 
+    palloc_free_page (cmd_copy);
+    palloc_free_page (cinfo);
+    return TID_ERROR;
+  }
+  
+  cinfo->tid = tid;
+  list_push_back(&thread_current()->children, &cinfo->elem);
+
+  struct thread *child_t;
+  child_t = thread_get_by_tid(tid);
+  if (child_t != NULL) 
+    child_t->cinfo = cinfo; 
+
   return tid;
 }
 
@@ -88,11 +128,41 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  while (1) {
-  }
-  return -1;
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    struct process_block *cinfo = NULL;
+
+    /* Find the child_info entry in the parent's children list. */
+    for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
+        struct process_block *child = list_entry(e, struct process_block, elem);
+        if (child->tid == child_tid) {
+            cinfo = child;
+            break;
+        }
+    }
+
+    /* If not found or already waited on, return -1. */
+    if (cinfo == NULL || cinfo->waited) {
+        return -1;
+    }
+
+    /* Mark that we've waited on this child, so we can't wait again. */
+    cinfo->waited = true;
+
+    /* If the child has not exited yet, block until it signals. */
+    if (!cinfo->is_exited) {
+        sema_down(&cinfo->exit_sema);
+    }
+
+    /* Now the child is done. Retrieve exit code and free resources. */
+    int exit_code = cinfo->exit_status;
+
+    list_remove(&cinfo->elem);
+    palloc_free_page(cinfo); /* Or use free() if you allocated differently */
+
+    return exit_code;
 }
 
 /* Free the current process's resources. */
@@ -118,6 +188,12 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  printf("%s: exit(%d)\n", cur->name, cur->exit_code);
+
+  struct process_block *cinfo = cur->cinfo;
+  cinfo->exit_status = cur->exit_code;
+  cinfo->is_exited = true;
+  sema_up(&cinfo->exit_sema);
 }
 
 /* Sets up the CPU for running user code in the current
