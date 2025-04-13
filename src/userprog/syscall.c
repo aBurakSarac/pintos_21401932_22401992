@@ -7,6 +7,8 @@
 #include "threads/vaddr.h" 
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 static void check_user_address(const void *addr);
@@ -14,6 +16,7 @@ static int sys_write(int fd, const void *buffer, unsigned size);
 static void check_user_buffer (const void *buffer, unsigned size);
 static int sys_open (const char *file_name);
 static int sys_read (int fd, void *buffer, unsigned size);
+static struct file *get_file_by_fd (int fd);
 
 void
 syscall_init (void) 
@@ -30,33 +33,33 @@ static void syscall_handler (struct intr_frame *f) {
   }
   else if(syscall_number==SYS_EXIT){
     int status;
-    check_user_address(f->esp + sizeof(int));
-    status = *(int *)(f->esp + sizeof(int));
+    check_user_address(f->esp + 4);
+    status = *(int *)(f->esp + 4);
     thread_current()->exit_code = status;
     thread_exit();
   }
   else if (syscall_number==SYS_EXEC){
     const char *cmd_line;
-    check_user_address(f->esp + sizeof(int));
-    cmd_line = *(const char **)(f->esp + sizeof(int));
+    check_user_address(f->esp + 4);
+    cmd_line = *(const char **)(f->esp + 4);
     check_user_address(cmd_line);
     f->eax = process_execute(cmd_line);
   }
   else if(syscall_number==SYS_WAIT){
     int child_tid;
-    check_user_address(f->esp + sizeof(int));
-    child_tid = *(int *)(f->esp + sizeof(int));
+    check_user_address(f->esp + 4);
+    child_tid = *(int *)(f->esp + 4);
     f->eax = process_wait(child_tid);
   }
   else if(syscall_number==SYS_CREATE){
     const char *file_name;
     unsigned initial_size;
         
-    check_user_address(f->esp + sizeof(int));
-    file_name = *(const char **)(f->esp + sizeof(int));
+    check_user_address(f->esp + 4);
+    file_name = *(const char **)(f->esp + 4);
         
-    check_user_address(f->esp + 2 * sizeof(int));
-    initial_size = *(unsigned *)(f->esp + 2 * sizeof(int));
+    check_user_address(f->esp + 8);
+    initial_size = *(unsigned *)(f->esp + 8);
 
     check_user_address(file_name);
         
@@ -66,18 +69,24 @@ static void syscall_handler (struct intr_frame *f) {
     
   }
   else if(syscall_number==SYS_OPEN){
-    char *file_name = *((char **)(f->esp + sizeof(char *)));
+    char *file_name = *((char **)(f->esp + 4));
     check_user_address(file_name);
     int fd = sys_open(file_name);
     f->eax = fd; 
   }
   else if(syscall_number==SYS_FILESIZE){
-
+    int fd = *(int *)(f->esp + 4);
+    struct file *f_obj = get_file_by_fd(fd);
+    if (f_obj == NULL) {
+      f->eax = -1;
+    } else {
+      f->eax = file_length(f_obj);
+    }
   }
   else if(syscall_number==SYS_READ){
-    int fd = *((int *)(f->esp + sizeof(int)));
-    void *buffer = *((void **)(f->esp + sizeof(int) * 2));
-    unsigned size = *((unsigned *)(f->esp + sizeof(int) * 3));
+    int fd = *((int *)(f->esp + 4));
+    void *buffer = *((void **)(f->esp + 8));
+    unsigned size = *((unsigned *)(f->esp + 12));
     check_user_address(buffer);
 
     int read = sys_read(fd, buffer, size);
@@ -89,14 +98,14 @@ static void syscall_handler (struct intr_frame *f) {
     const void *buffer;
     unsigned size;
         
-    check_user_address(f->esp + sizeof(int));
-    fd = *(int *)(f->esp + sizeof(int));
+    check_user_address(f->esp + 4);
+    fd = *(int *)(f->esp + 4);
         
-    check_user_address(f->esp + 2 * sizeof(int));
-    buffer = *(const void **)(f->esp + 2 * sizeof(int));
+    check_user_address(f->esp + 8);
+    buffer = *(const void **)(f->esp + 8);
         
-    check_user_address(f->esp + 3 * sizeof(int));
-    size = *(unsigned *)(f->esp + 3 * sizeof(int));  
+    check_user_address(f->esp + 12);
+    size = *(unsigned *)(f->esp + 12);  
 
     check_user_address(buffer);
     if (fd == 1) {
@@ -169,4 +178,17 @@ sys_read (int fd, void *buffer, unsigned size) {
     return -1;
 
   return file_read(fd_struct->file, buffer, size);
+}
+
+static struct file *get_file_by_fd (int fd) {
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  struct file_descriptor *fd_struct;
+  for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
+    fd_struct = list_entry(e, struct file_descriptor, elem);
+    if (fd_struct->file_id == fd) {
+      return fd_struct->file;
+    }
+  }
+  return NULL;
 }
