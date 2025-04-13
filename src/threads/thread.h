@@ -115,6 +115,7 @@ struct thread
     int exit_code;
     struct list open_files;
     int next_fd; 
+    struct file *executable;
 #endif
 
     /* Owned by thread.c. */

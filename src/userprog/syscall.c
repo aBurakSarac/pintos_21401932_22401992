@@ -29,7 +29,7 @@ static void syscall_handler (struct intr_frame *f) {
   check_user_address(f->esp);
   syscall_number = *(int *)f->esp;
   if (syscall_number == SYS_HALT) {
-    //passes tests?
+    shutdown_power_off();
   }
   else if(syscall_number==SYS_EXIT){
     int status;
@@ -110,9 +110,22 @@ static void syscall_handler (struct intr_frame *f) {
     check_user_address(buffer);
     if (fd == 1) {
       putbuf(buffer, size);
+      f->eax = size;
+    }else {
+      struct file_descriptor *fd_struct = NULL;
+      struct file_descriptor *temp ;
+      struct list_elem *e;
+      for (e = list_begin(&thread_current()->open_files); e != list_end(&thread_current()->open_files); e = list_next(e)) {
+        temp = list_entry(e, struct file_descriptor, elem);
+        if (temp->file_id == fd) {
+          f->eax = file_write(temp->file, buffer, size);
+          break;
+        }
+      }
+      if (temp == NULL) {
+        f->eax = -1; 
+      }
     }
-
-    f->eax = size;
   }
   else if(syscall_number==SYS_SEEK){
     
