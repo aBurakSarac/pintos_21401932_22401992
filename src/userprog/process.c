@@ -39,6 +39,8 @@ process_execute (const char *file_name)
   cinfo->is_exited = false;
   cinfo->waited = false;
   sema_init(&cinfo->exit_sema, 0);
+  sema_init(&cinfo->load_sema, 0);
+  cinfo->load_status = false;
   
   char *cmd_copy = palloc_get_page(0);
   char *fn_copy;
@@ -55,6 +57,7 @@ process_execute (const char *file_name)
   if (cmd_copy == NULL) 
   {
     palloc_free_page(cinfo);
+    palloc_free_page(fn_copy);
     return TID_ERROR;
   }
   strlcpy (fn_copy, file_name, PGSIZE);
@@ -62,7 +65,8 @@ process_execute (const char *file_name)
   char *save_ptr=NULL;
   char *argv0 = strtok_r(cmd_copy, " ", &save_ptr);
   if (argv0 == NULL) {
-    palloc_free_page(cmd_copy);
+    palloc_free_page (fn_copy); 
+    palloc_free_page (cmd_copy);
     palloc_free_page(cinfo);
     return TID_ERROR;
   }
@@ -84,6 +88,13 @@ process_execute (const char *file_name)
   if (child_t != NULL) 
     child_t->cinfo = cinfo; 
 
+  sema_down(&cinfo->load_sema);
+  if (!cinfo->load_status) {
+    list_remove(&cinfo->elem);
+    palloc_free_page(cinfo);
+    return TID_ERROR;
+  }
+
   return tid;
 }
 
@@ -102,6 +113,12 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+
+  struct thread *cur = thread_current();
+  if(cur->cinfo != NULL) {
+    cur->cinfo->load_status = success;
+    sema_up(&cur->cinfo->load_sema);
+  }
 
   /* If load failed, quit. */
   palloc_free_page (file_name);

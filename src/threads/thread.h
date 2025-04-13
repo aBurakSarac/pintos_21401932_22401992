@@ -128,6 +128,8 @@ struct process_block {
     bool is_exited;
     bool waited;
     struct semaphore exit_sema;
+    struct semaphore load_sema;
+    bool load_status;
     struct list_elem elem;
 };
 
