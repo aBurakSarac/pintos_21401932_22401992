@@ -50,9 +50,20 @@ static void syscall_handler (struct intr_frame *f) {
 
     f->eax = size;
   }
+  else if(syscall_number==SYS_EXEC){
+    check_user_address(f->esp + sizeof(int));
+    char *cmd = *(char **)(f->esp + sizeof(int));
+    check_user_address(cmd);
+    f->eax = process_execute(cmd);
+  }
 }
 
 static void check_user_address(const void *addr) {
-  if (!is_user_vaddr(addr) || pagedir_get_page(thread_current()->pagedir, addr) == NULL)
-    thread_exit();
+  for (int i = 0; i < sizeof(int); i++) {
+    if (!is_user_vaddr(addr + i) || pagedir_get_page(thread_current()->pagedir, addr+i) == NULL)
+    {
+      thread_current()->exit_code = -1;
+      thread_exit();
+    }
+  } 
 }
