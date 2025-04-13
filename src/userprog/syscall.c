@@ -6,10 +6,14 @@
 #include "../lib/kernel/console.h"
 #include "threads/vaddr.h" 
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 
 static void syscall_handler (struct intr_frame *);
 static void check_user_address(const void *addr);
 static int sys_write(int fd, const void *buffer, unsigned size);
+static void check_user_buffer (const void *buffer, unsigned size);
+static int sys_open (const char *file_name);
+static int sys_read (int fd, void *buffer, unsigned size);
 
 void
 syscall_init (void) 
@@ -62,12 +66,22 @@ static void syscall_handler (struct intr_frame *f) {
     
   }
   else if(syscall_number==SYS_OPEN){
-    
+    char *file_name = *((char **)(f->esp + sizeof(char *)));
+    check_user_address(file_name);
+    int fd = sys_open(file_name);
+    f->eax = fd; 
   }
   else if(syscall_number==SYS_FILESIZE){
-    
+
   }
   else if(syscall_number==SYS_READ){
+    int fd = *((int *)(f->esp + sizeof(int)));
+    void *buffer = *((void **)(f->esp + sizeof(int) * 2));
+    unsigned size = *((unsigned *)(f->esp + sizeof(int) * 3));
+    check_user_address(buffer);
+
+    int read = sys_read(fd, buffer, size);
+    f->eax = read;
     
   }
   else if(syscall_number==SYS_WRITE){
@@ -114,4 +128,45 @@ static void check_user_address(const void *addr) {
       thread_exit();
     }
   } 
+}
+
+
+int sys_open (const char *file_name)
+{
+  struct file_descriptor *fd_struct = malloc(sizeof(struct file_descriptor));
+  if (fd_struct == NULL) {
+    return -1;
+  }
+
+  struct file *f = filesys_open(file_name);
+  if (f == NULL)
+    return -1;
+
+  fd_struct->file_id = thread_current()->next_fd; 
+  fd_struct->file = f;
+  thread_current()->next_fd++;
+  list_push_back(&thread_current()->open_files, &fd_struct->elem);
+
+  return fd_struct->file_id;
+}
+
+int
+sys_read (int fd, void *buffer, unsigned size) {
+
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  struct file_descriptor *fd_struct = NULL;
+  struct file_descriptor *temp;
+  for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
+    temp = list_entry(e, struct file_descriptor, elem);
+    if (temp->file_id == fd) {
+      fd_struct = temp;
+      break;
+    }
+  }
+
+  if (fd_struct == NULL)
+    return -1;
+
+  return file_read(fd_struct->file, buffer, size);
 }

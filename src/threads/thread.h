@@ -113,6 +113,8 @@ struct thread
     struct list children;
     struct process_block *cinfo;
     int exit_code;
+    struct list open_files;
+    int next_fd; 
 #endif
 
     /* Owned by thread.c. */

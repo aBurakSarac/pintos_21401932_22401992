@@ -635,6 +635,9 @@ init_thread (struct thread *t, const char *name, int priority)
     t->pagedir = NULL;
     t->cinfo = NULL;
     list_init(&t->children);   
+    list_init(&t->open_files);
+    t->next_fd = 2; 
+    t->exit_code = -1;
   #endif
 
   if(thread_mlfqs && t != idle_thread)
