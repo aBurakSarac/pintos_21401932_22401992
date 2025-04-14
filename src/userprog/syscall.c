@@ -9,6 +9,7 @@
 #include "userprog/process.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "threads/synch.h"
 
 static void syscall_handler (struct intr_frame *);
 static void check_user_address(const void *addr);
@@ -17,11 +18,14 @@ static void check_user_buffer (const void *buffer, unsigned size);
 static int sys_open (const char *file_name);
 static int sys_read (int fd, void *buffer, unsigned size);
 static struct file *get_file_by_fd (int fd);
+static bool sys_remove(const char *file_name);
+static struct lock file_lock;
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&file_lock);
 }
 
 static void syscall_handler (struct intr_frame *f) {
@@ -66,7 +70,10 @@ static void syscall_handler (struct intr_frame *f) {
     f->eax = filesys_create(file_name, initial_size);
   }
   else if(syscall_number==SYS_REMOVE){
-    
+    check_user_address(f->esp + 4);
+    const char file_name = *(const char **)(f->esp + 4);
+    check_user_address(file_name);
+    f->eax = sys_remove(file_name);
   }
   else if(syscall_number==SYS_OPEN){
     char *file_name = *((char **)(f->esp + 4));
@@ -109,12 +116,14 @@ static void syscall_handler (struct intr_frame *f) {
 
     check_user_address(buffer);
     if (fd == 1) {
+      lock_acquire(&file_lock);
       putbuf(buffer, size);
+      lock_release(&file_lock);
       f->eax = size;
     }else {
-      struct file_descriptor *fd_struct = NULL;
-      struct file_descriptor *temp ;
+      struct file_descriptor *temp =NULL;
       struct list_elem *e;
+      lock_acquire(&file_lock);
       for (e = list_begin(&thread_current()->open_files); e != list_end(&thread_current()->open_files); e = list_next(e)) {
         temp = list_entry(e, struct file_descriptor, elem);
         if (temp->file_id == fd) {
@@ -122,6 +131,7 @@ static void syscall_handler (struct intr_frame *f) {
           break;
         }
       }
+      lock_release(&file_lock);
       if (temp == NULL) {
         f->eax = -1; 
       }
@@ -159,15 +169,19 @@ int sys_open (const char *file_name)
   if (fd_struct == NULL) {
     return -1;
   }
-
+  lock_acquire(&file_lock);
   struct file *f = filesys_open(file_name);
-  if (f == NULL)
+  if (f == NULL){
+    lock_release(&file_lock);
     return -1;
-
+  }
+  lock_release(&file_lock);
   fd_struct->file_id = thread_current()->next_fd; 
   fd_struct->file = f;
   thread_current()->next_fd++;
+  lock_acquire(&file_lock);
   list_push_back(&thread_current()->open_files, &fd_struct->elem);
+  lock_release(&file_lock);
 
   return fd_struct->file_id;
 }
@@ -179,6 +193,7 @@ sys_read (int fd, void *buffer, unsigned size) {
   struct list_elem *e;
   struct file_descriptor *fd_struct = NULL;
   struct file_descriptor *temp;
+  lock_acquire(&file_lock);
   for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
     temp = list_entry(e, struct file_descriptor, elem);
     if (temp->file_id == fd) {
@@ -186,22 +201,37 @@ sys_read (int fd, void *buffer, unsigned size) {
       break;
     }
   }
-
+  lock_release(&file_lock);
   if (fd_struct == NULL)
     return -1;
+  lock_acquire(&file_lock);
+  int read = file_read(fd_struct->file, buffer, size);
+  lock_release(&file_lock);
+  return read;
 
-  return file_read(fd_struct->file, buffer, size);
 }
+
+bool
+sys_remove(const char *file_name) {
+    if (file_name == NULL)
+        return false;
+    bool success = filesys_remove(file_name);
+    return success;
+}
+
 
 static struct file *get_file_by_fd (int fd) {
   struct thread *cur = thread_current();
   struct list_elem *e;
   struct file_descriptor *fd_struct;
+  lock_acquire(&file_lock);
   for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
     fd_struct = list_entry(e, struct file_descriptor, elem);
     if (fd_struct->file_id == fd) {
+      lock_release(&file_lock);
       return fd_struct->file;
     }
   }
+  lock_release(&file_lock);
   return NULL;
 }
