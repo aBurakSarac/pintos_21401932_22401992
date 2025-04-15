@@ -122,17 +122,6 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 };
 
-struct process_block {
-  //tid: the thread id of the child process
-    tid_t tid;
-    int exit_status;
-    bool is_exited;
-    bool waited;
-    struct semaphore exit_sema;
-    struct semaphore load_sema;
-    bool load_status;
-    struct list_elem elem;
-};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

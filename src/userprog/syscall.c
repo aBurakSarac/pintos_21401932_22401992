@@ -13,12 +13,10 @@
 
 static void syscall_handler (struct intr_frame *);
 static void check_user_address(const void *addr);
-static int sys_write(int fd, const void *buffer, unsigned size);
-static void check_user_buffer (const void *buffer, unsigned size);
 static int sys_open (const char *file_name);
-static int sys_read (int fd, void *buffer, unsigned size);
 static struct file *get_file_by_fd (int fd);
-static bool sys_remove(const char *file_name);
+static int sys_io(int fd, const void *buffer, unsigned size, bool is_write);
+
 static struct lock file_lock;
 
 void
@@ -31,6 +29,7 @@ syscall_init (void)
 static void syscall_handler (struct intr_frame *f) {
   int syscall_number;
   check_user_address(f->esp);
+  check_user_address(f->esp + 4);
   syscall_number = *(int *)f->esp;
   switch (syscall_number) {
     case SYS_HALT:
@@ -38,9 +37,7 @@ static void syscall_handler (struct intr_frame *f) {
       break;
 
     case SYS_EXIT: {
-      int status;
-      check_user_address(f->esp + 4);
-      status = *(int *)(f->esp + 4);
+      int status = *(int *)(f->esp + 4);
       thread_current()->exit_code = status;
       thread_exit();
       break;
@@ -48,7 +45,6 @@ static void syscall_handler (struct intr_frame *f) {
 
     case SYS_EXEC: {
       const char *cmd_line;
-      check_user_address(f->esp + 4);
       cmd_line = *(const char **)(f->esp + 4);
       check_user_address(cmd_line);
       f->eax = process_execute(cmd_line);
@@ -57,7 +53,6 @@ static void syscall_handler (struct intr_frame *f) {
 
     case SYS_WAIT: {
       int child_tid;
-      check_user_address(f->esp + 4);
       child_tid = *(int *)(f->esp + 4);
       f->eax = process_wait(child_tid);
       break;
@@ -65,106 +60,96 @@ static void syscall_handler (struct intr_frame *f) {
 
     case SYS_CREATE: {
       const char *file_name;
-      unsigned initial_size;
-
-      check_user_address(f->esp + 4);
       file_name = *(const char **)(f->esp + 4);
-
-      check_user_address(f->esp + 8);
-      initial_size = *(unsigned *)(f->esp + 8);
-
       check_user_address(file_name);
+      check_user_address(f->esp + 8);
+
+      unsigned initial_size;
+      initial_size = *(unsigned *)(f->esp + 8);
 
       f->eax = filesys_create(file_name, initial_size);
       break;
     }
 
     case SYS_REMOVE: {
-      check_user_address(f->esp + 4);
-      const char *file_name = *(const char **)(f->esp + 4);
+      const char *file_name ;
+      file_name = *(const char **)(f->esp + 4);
       check_user_address(file_name);
+
+      
+      if (file_name == NULL)
+        f->eax = false;
       lock_acquire(&file_lock);
-      f->eax = sys_remove(file_name);
+      bool success = filesys_remove(file_name);
       lock_release(&file_lock);
+      f->eax = success;
+
       break;
     }
 
     case SYS_OPEN: {
-      char *file_name = *((char **)(f->esp + 4));
+      char *file_name ;
+      file_name = *((char **)(f->esp + 4));
       check_user_address(file_name);
+      
       int fd = sys_open(file_name);
       f->eax = fd;
       break;
     }
 
     case SYS_FILESIZE: {
-      int fd = *(int *)(f->esp + 4);
-      struct file *f_obj = get_file_by_fd(fd);
-      if (f_obj == NULL) {
+      int *fd;
+      fd = *(int *)(f->esp + 4);
+
+      struct file *file = get_file_by_fd(fd);
+      if (file == NULL) {
         f->eax = -1;
       } else {
-        f->eax = file_length(f_obj);
+        lock_acquire(&file_lock);
+        f->eax = file_length(file);
+        lock_release(&file_lock);
       }
       break;
     }
 
     case SYS_READ: {
       int fd = *((int *)(f->esp + 4));
+
+      check_user_address(f->esp + 8);
       void *buffer = *((void **)(f->esp + 8));
-      unsigned size = *((unsigned *)(f->esp + 12));
       check_user_address(buffer);
 
-      int read = sys_read(fd, buffer, size);
+      check_user_address(f->esp + 12);
+      unsigned size = *((unsigned *)(f->esp + 12));
+
+      int read = sys_io(fd, buffer, size, false);
       f->eax = read;
       break;
     }
 
     case SYS_WRITE: {
-      int fd;
-      const void *buffer;
-      unsigned size;
-
-      check_user_address(f->esp + 4);
-      fd = *(int *)(f->esp + 4);
+      int fd = *((int *)(f->esp + 4));
 
       check_user_address(f->esp + 8);
-      buffer = *(const void **)(f->esp + 8);
+      void *buffer = *((void **)(f->esp + 8));
+      check_user_address(buffer);
 
       check_user_address(f->esp + 12);
-      size = *(unsigned *)(f->esp + 12);
+      unsigned size = *((unsigned *)(f->esp + 12));
 
-      check_user_address(buffer);
-      if (fd == 1) {
-        lock_acquire(&file_lock);
-        putbuf(buffer, size);
-        lock_release(&file_lock);
-        f->eax = size;
-      } else {
-        struct file_descriptor *temp = NULL;
-        struct list_elem *e;
-        lock_acquire(&file_lock);
-        for (e = list_begin(&thread_current()->open_files); e != list_end(&thread_current()->open_files); e = list_next(e)) {
-          temp = list_entry(e, struct file_descriptor, elem);
-          if (temp->file_id == fd) {
-            f->eax = file_write(temp->file, buffer, size);
-            break;
-          }
-        }
-        lock_release(&file_lock);
-        if (temp == NULL) {
-          f->eax = -1;
-        }
-      }
+      f->eax = sys_io(fd, buffer, size, true);
       break;
     }
 
     case SYS_SEEK: {
-      check_user_address(f->esp + 4);
       int fd = *(int *)(f->esp + 4);
       check_user_address(f->esp + 8);
       unsigned position = *(unsigned *)(f->esp + 8);
+
       struct file *file = get_file_by_fd(fd);
-      if (file != NULL) {
+      if (file == NULL) {
+        f->eax = -1;
+      } else {
         lock_acquire(&file_lock);
         file_seek(file, position);
         lock_release(&file_lock);
@@ -173,37 +158,36 @@ static void syscall_handler (struct intr_frame *f) {
     }
 
     case SYS_TELL: {
-      check_user_address(f->esp + 4);
-      int fd = *(int *)(f->esp + 4);
+      int *fd;
+      fd = *(int *)(f->esp + 4);
+
       struct file *file = get_file_by_fd(fd);
-      if (file != NULL) {
+      if (file == NULL) {
+        f->eax = -1;
+      } else {
         lock_acquire(&file_lock);
         f->eax = file_tell(file);
         lock_release(&file_lock);
-      } else {
-        f->eax = -1;
       }
       break;
     }
 
     case SYS_CLOSE: {
-      check_user_address(f->esp + 4);
       int fd = *(int *)(f->esp + 4);
       struct thread *cur = thread_current();
       struct list_elem *e;
-      struct file_descriptor *fd_struct = NULL;
+      struct file_descriptor *temp = NULL;
 
       lock_acquire(&file_lock);
       for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
-        fd_struct = list_entry(e, struct file_descriptor, elem);
-        if (fd_struct->file_id == fd) {
-          list_remove(&fd_struct->elem);
+        temp = list_entry(e, struct file_descriptor, elem);
+        if (temp->file_id == fd) {
+          list_remove(&temp->elem);
           break;
         }
       }
-      if (fd_struct != NULL) {
-        file_close(fd_struct->file);
-        free(fd_struct);
+      if (temp != NULL) {
+        file_close(temp->file);
       }
       lock_release(&file_lock);
       break;
@@ -217,7 +201,7 @@ static void syscall_handler (struct intr_frame *f) {
 }
 
 static void check_user_address(const void *addr) {
-  for (int i = 0; i < sizeof(int); i++) {
+  for (int i = 0; i < 4; i++) {
     if (!is_user_vaddr(addr + i) || pagedir_get_page(thread_current()->pagedir, addr+i) == NULL)
     {
       thread_current()->exit_code = -1;
@@ -229,59 +213,61 @@ static void check_user_address(const void *addr) {
 
 int sys_open (const char *file_name)
 {
-  struct file_descriptor *fd_struct = malloc(sizeof(struct file_descriptor));
-  if (fd_struct == NULL) {
+  struct file_descriptor *fd = malloc(sizeof(struct file_descriptor));
+  if (fd == NULL) {
     return -1;
   }
   lock_acquire(&file_lock);
   struct file *f = filesys_open(file_name);
   if (f == NULL){
     lock_release(&file_lock);
-    free(fd_struct);
+    free(fd);
     return -1;
   }
   lock_release(&file_lock);
-  fd_struct->file_id = thread_current()->next_fd; 
-  fd_struct->file = f;
+  fd->file_id = thread_current()->next_fd; 
+  fd->file = f;
   thread_current()->next_fd++;
   lock_acquire(&file_lock);
-  list_push_back(&thread_current()->open_files, &fd_struct->elem);
+  list_push_back(&thread_current()->open_files, &fd->elem);
   lock_release(&file_lock);
 
-  return fd_struct->file_id;
+  return fd->file_id;
 }
 
-int
-sys_read (int fd, void *buffer, unsigned size) {
 
-  struct thread *cur = thread_current();
-  struct list_elem *e;
-  struct file_descriptor *fd_struct = NULL;
-  struct file_descriptor *temp;
-  lock_acquire(&file_lock);
-  for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
-    temp = list_entry(e, struct file_descriptor, elem);
-    if (temp->file_id == fd) {
-      fd_struct = temp;
-      break;
+sys_io(int fd, const void *buffer, unsigned size, bool is_write) {
+  if (fd == 1 && is_write) {
+    lock_acquire(&file_lock);
+    putbuf(buffer, size);
+    lock_release(&file_lock);
+    return size;
+  } else {
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    struct file_descriptor *fd_struct = NULL;
+    struct file_descriptor *temp;
+    lock_acquire(&file_lock);
+    for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
+      temp = list_entry(e, struct file_descriptor, elem);
+      if (temp->file_id == fd) {
+        fd_struct = temp;
+        break;
+      }
     }
+    lock_release(&file_lock);
+    if (fd_struct == NULL)
+      return -1;
+    int result;
+    lock_acquire(&file_lock);
+    if(is_write) {
+      result = file_write(fd_struct->file, buffer, size);
+    } else {
+      result = file_read(fd_struct->file, buffer, size);
+    }
+    lock_release(&file_lock);
+    return result;
   }
-  lock_release(&file_lock);
-  if (fd_struct == NULL)
-    return -1;
-  lock_acquire(&file_lock);
-  int read = file_read(fd_struct->file, buffer, size);
-  lock_release(&file_lock);
-  return read;
-
-}
-
-bool
-sys_remove(const char *file_name) {
-    if (file_name == NULL)
-        return false;
-    bool success = filesys_remove(file_name);
-    return success;
 }
 
 
