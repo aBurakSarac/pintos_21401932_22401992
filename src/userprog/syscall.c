@@ -73,7 +73,9 @@ static void syscall_handler (struct intr_frame *f) {
     check_user_address(f->esp + 4);
     const char file_name = *(const char **)(f->esp + 4);
     check_user_address(file_name);
+    lock_acquire(&file_lock);
     f->eax = sys_remove(file_name);
+    lock_release(&file_lock);
   }
   else if(syscall_number==SYS_OPEN){
     char *file_name = *((char **)(f->esp + 4));
@@ -138,13 +140,49 @@ static void syscall_handler (struct intr_frame *f) {
     }
   }
   else if(syscall_number==SYS_SEEK){
-    
+    check_user_address(f->esp + 4);
+    int fd = *(int *)(f->esp + 4);
+    check_user_address(f->esp + 8);
+    unsigned position = *(unsigned *)(f->esp + 8);
+    struct file *file = get_file_by_fd(fd);
+    if (file != NULL) {
+      lock_acquire(&file_lock);
+      file_seek(file, position);
+      lock_release(&file_lock);
+    }
   }
   else if(syscall_number==SYS_TELL){
-    
+    check_user_address(f->esp + 4);
+    int fd = *(int *)(f->esp + 4);
+    struct file *file = get_file_by_fd(fd);
+    if (file != NULL) {
+      lock_acquire(&file_lock);
+      f->eax = file_tell(file);
+      lock_release(&file_lock);
+    } else {
+      f->eax = -1;
+    }
   }
   else if(syscall_number==SYS_CLOSE){
+    check_user_address(f->esp + 4);
+    int fd = *(int *)(f->esp + 4);
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    struct file_descriptor *fd_struct = NULL;
     
+    lock_acquire(&file_lock);
+    for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
+      fd_struct = list_entry(e, struct file_descriptor, elem);
+      if (fd_struct->file_id == fd) {
+        list_remove(&fd_struct->elem);
+        break;
+      }
+    }
+    if (fd_struct != NULL) {
+      file_close(fd_struct->file);
+      free(fd_struct);
+    }
+    lock_release(&file_lock);
   }
   else{
     thread_current()->exit_code = -1;
