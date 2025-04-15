@@ -152,7 +152,6 @@ process_wait (tid_t child_tid)
     struct list_elem *e;
     struct process_block *cinfo = NULL;
 
-    /* Find the child_info entry in the parent's children list. */
     for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
         struct process_block *child = list_entry(e, struct process_block, elem);
         if (child->tid == child_tid) {
@@ -161,12 +160,10 @@ process_wait (tid_t child_tid)
         }
     }
 
-    /* If not found or already waited on, return -1. */
     if (cinfo == NULL || cinfo->waited) {
         return -1;
     }
 
-    /* Mark that we've waited on this child, so we can't wait again. */
     cinfo->waited = true;
 
     /* If the child has not exited yet, block until it signals. */
@@ -174,11 +171,10 @@ process_wait (tid_t child_tid)
         sema_down(&cinfo->exit_sema);
     }
 
-    /* Now the child is done. Retrieve exit code and free resources. */
     int exit_code = cinfo->exit_status;
 
     list_remove(&cinfo->elem);
-    palloc_free_page(cinfo); /* Or use free() if you allocated differently */
+    palloc_free_page(cinfo);
 
     return exit_code;
 }

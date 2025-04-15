@@ -92,11 +92,11 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{1em}
 
-\title{INF333 2023-2024 Spring Semester}
+\title{INF333 2024-2025 Spring Semester}
 \author{
-\textbf{\color{blue}{Şirinler}} {\small(your group name, use an appropriate color)}
-\\ Student 1 Name <stu1@gsu.edu.tr>
-\\ Student 2 Name <stu2@gsu.edu.tr>}
+\textbf{\color{teal}{Pintocchio}}
+\\ Ali Burak SARAÇ <21401932@ogr.gsu.edu.tr>
+\\ Sude Melis PİLAZ <22401992@ogr.gsu.edu.tr>}
 
 \begin{document}
 
@@ -112,17 +112,20 @@ Please provide answers inline in a \texttt{quote} environment.
 
 \textbf{Q1:} If you have any preliminary comments on your submission, notes for the TAs, or extra credit, please give them here.
 \begin{quote}
-  Answer here
+  We created a dedicated process\_block structure separated from thread structure. This approach helped us manage parent-child 
+relationships more effectively and simplified synchronization between processes.
+
 \end{quote}
 
 
 \textbf{Q2:} Please cite any offline or online sources you consulted while preparing your
 submission, other than the Pintos documentation, course text, and lecture notes.
 \begin{quote}
-  Answer here
+  \href{https://www.youtube.com/@DrY-Howto}{Dr. Ramesh Yarraballi's YouTube Channel}\\
+  \href{https://www.youtube.com/@soon35}{Prof. Thierry Sans's YouTube Channel}
 \end{quote}
 
-
+\newpage
 \section{Argument Passing}
 
 \subsection{Data Structures}
@@ -130,10 +133,13 @@ submission, other than the Pintos documentation, course text, and lecture notes.
 \textbf{Q3:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.
 
 Identify the purpose of each in 25 words or less.
-\begin{quote}
-  Answer here
+\begin{quote}   
+    \textbf{In process.c:}
+    \begin{itemize}
+    \item \texttt{\#define CMD\_ARGS\_MAX 32} \\
+       Maximum number of command-line arguments allowed for a process.
+    \end{itemize}
 \end{quote}
-
 
 \subsection{Algorithms}
 
@@ -141,19 +147,45 @@ Identify the purpose of each in 25 words or less.
 \textbf{Q4:} Briefly describe how you implemented argument parsing.  How do you arrange for the elements of \texttt{argv[]} to be in the right order? How do you avoid overflowing the stack page?
 
 \begin{quote}
-  Answer here
+Our argument parsing implementation is based on a two-phase approach. In \texttt{process\_execute()}, we first extract only the program name (\texttt{argv[0]}) using \texttt{strtok\_r()} so that the thread is created with the correct name. The full command line is then passed to \texttt{start\_process()}.
+
+In \texttt{load()}, we parse the complete command line using a helper function (\texttt{get\_args()}) which tokenizes the command string into an array of arguments (\texttt{argv}) and returns the argument count (\texttt{argc}).
+
+For stack arrangement, \texttt{setup\_stack()} constructs the stack from high to low addresses as follows:
+\begin{itemize}
+    \item Each argument string is pushed onto the stack in reverse order (\texttt{argc-1} to 0).
+    \item The stack pointer is aligned to a 4-byte boundary using zero padding.
+    \item A null pointer sentinel (\texttt{argv[argc]}) is pushed.
+    \item Pointers to each argument string (\texttt{argv[0]} to \texttt{argv[argc-1]}) are pushed in reverse order.
+    \item The address of \texttt{argv} itself is pushed.
+    \item \texttt{argc} is pushed.
+    \item Finally, a fake return address (0) is pushed.
+\end{itemize}
+
+To avoid stack overflow, we define \texttt{CMD\_ARGS\_MAX} (32) to limit the number of arguments.
+
 \end{quote}
 
+\newpage
 \subsection{Rationale}
 
 \textbf{Q5:} Why does Pintos implement \texttt{strtok\_r()} but not \texttt{strtok()}?
 \begin{quote}
-  Answer here
+Pintos uses \texttt{strtok\_r()} instead of \texttt{strtok()} because \texttt{strtok\_r()} is safe to use with many threads at the same time, but \texttt{strtok()} is not.
+
+The reason is that \texttt{strtok()} saves its progress in a static variable, so if two threads use it at once, they interfere with each other. \texttt{strtok\_r()} fixes this by letting each thread keep its own progress using an extra pointer.
+
+This is important in Pintos because different threads might need to split up command lines at the same time. For example, we use \texttt{strtok\_r()} in both \texttt{process\_execute()} and \texttt{get\_args()}, and these can run in different threads.
 \end{quote}
 
 \textbf{Q6:} In Pintos, the kernel separates commands into an executable name and arguments.  In Unix-like systems, the shell does this separation.  Identify at least two advantages of the Unix approach.
 \begin{quote}
-  Answer here
+The Unix approach, where the shell separates the executable name and arguments before passing them to the kernel, has several advantages:
+
+1. \textbf{Simpler kernel design:} By handling command parsing in the shell, the kernel remains less complex and more focused on its core responsibilities. This reduces the likelihood of bugs and makes the kernel easier to maintain.
+
+2. \textbf{Greater flexibility for users:} The shell can provide advanced features such as wildcard expansion, variable substitution, and custom parsing rules. This allows users to have a more powerful and customizable command-line experience without requiring changes to the kernel.
+
 \end{quote}
 
 
@@ -163,99 +195,315 @@ Identify the purpose of each in 25 words or less.
 
 \textbf{Q7:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less
 \begin{quote}
-  Answer here
+  \begin{itemize}
+\item \textbf{In process.h:}
+  \begin{itemize}
+  \item \texttt{struct file\_descriptor} \\
+   Manages file descriptors for open files:
+   \begin{itemize}
+   \item \texttt{int file\_id;} - Unique identifier for the file descriptor
+   \item \texttt{struct file *file;} - Pointer to the actual file structure
+   \item \texttt{struct list\_elem elem;} - List element for open\_files list in each thread
+   \end{itemize}
+
+  \item \texttt{struct process\_block} \\
+   To help a parent process track and synchronize with a child process — including whether the child has loaded successfully, exited, and what its exit  status was.
+   \begin{itemize}
+   \item \texttt{tid\_t tid;} - Child's thread ID
+   \item \texttt{int exit\_status;} - Exit status of the child
+   \item \texttt{bool is\_exited;} - Whether the child has exited
+   \item \texttt{bool waited;} - Whether parent has waited on this child
+   \item \texttt{struct semaphore exit\_sema;} - Synchronizes parent with child's exit
+   \item \texttt{struct semaphore load\_sema;} - Synchronizes parent to child's loading
+   \item \texttt{bool load\_status;} - Success/failure of child's loading
+   \item \texttt{struct list\_elem elem;} - List element for child processes
+   \end{itemize}
+  \end{itemize}
+  
+\item \textbf{In syscall.c:}
+  \begin{itemize}
+  \item \texttt{static struct lock file\_lock;} \\
+       Global lock for synchronizing file system operations across multiple threads.
+  \end{itemize}
+    
+\item \textbf{In thread.h:}
+  \begin{itemize}
+  \item New members in \texttt{struct thread} under \texttt{\#ifdef USERPROG}:
+     \begin{itemize}
+     \item \texttt{struct list children;} - List of child processes
+     \item \texttt{struct process\_block *cinfo;} - Process information structure
+     \item \texttt{int exit\_code;} - Process exit status
+     \item \texttt{struct list open\_files;} - List of open file descriptors
+     \item \texttt{int next\_fd;} - Next available file descriptor number (starts from 2, reserving 0 and 1 for stdin and stdout)
+     \item \texttt{struct file *executable;} - Currently executing file
+     \end{itemize}
+  \end{itemize}
+\end{itemize}
 \end{quote}
 
+\newpage
 \textbf{Q8:} Describe how file descriptors are associated with open files. Are file descriptors unique within the entire OS or just within a single process?
 \begin{quote}
-  Answer here
+In our implementation, file descriptors are linked to open files using the \texttt{file\_descriptor} structure, which holds both the file descriptor ID and a pointer to the file object. Each thread keeps its own list of open files (\texttt{open\_files}) within its thread structure.
+
+File descriptors are unique only within a single process, not across the entire operating system. Each thread has its own file descriptor numbering, starting from 0, 1 (for standard input, output), and increasing from there. The \texttt{next\_fd} field in the thread structure keeps track of the next available descriptor number for that thread.
+
+When a file is opened, the following steps occur:
+\begin{enumerate}
+    \item A new \texttt{file\_descriptor} structure is created.
+    \item The next available descriptor number from the thread's \texttt{next\_fd} counter is assigned.
+    \item The pointer to the opened file is stored.
+    \item The structure is added to the thread's \texttt{open\_files} list.
+    \item The thread's \texttt{next\_fd} counter is incremented.
+\end{enumerate}
+
+This per-thread approach allows different processes to use the same descriptor numbers for different files, ensuring isolation between threads and simplifying descriptor management.
 \end{quote}
 
 \textbf{Q9:} Describe the sequence of events when \texttt{lock\_release()} is called on a lock that a higher-priority thread is waiting for.
 \begin{quote}
-  Answer here
+When \texttt{lock\_release()} is called on a lock that a higher-priority thread is waiting for, the following sequence of events occurs:
+
+1. The lock's \texttt{holder} field is set to \texttt{NULL}, indicating the lock is now available.
+
+2. The system checks the lock's semaphore waiters list to see if any threads are waiting.
+
+3. If waiters exist, the highest-priority waiting thread is unblocked by calling \texttt{sema\_up()} on the lock's semaphore.
+
+4. The unblocked higher-priority thread is added to the ready queue.
+
+5. Since a higher-priority thread is now ready, the scheduler is invoked to determine if a context switch is needed.
+
+6. The higher-priority thread acquires the CPU, runs \texttt{sema\_down()} to completion, and sets itself as the new lock holder.
+
+7. The original thread that released the lock may be preempted immediately if the newly unblocked thread has higher priority, implementing priority scheduling.
+
 \end{quote}
+
 
 \subsection{Algorithms}
 
 \textbf{Q10:} Describe your code for reading and writing user data from the kernel.
 \begin{quote}
-  Answer here
+Our code for reading and writing user data from the kernel is primarily implemented in the \texttt{sys\_io} function, which handles both read and write operations with a unified approach:
+
+1. \textbf{Parameter handling}: The function takes a file descriptor (\texttt{fd}), a buffer pointer, a size, and a boolean flag indicating whether this is a write operation.
+
+2. \textbf{Special case for console output}: If the file descriptor is 1 (stdout) and the operation is write, we directly call \texttt{putbuf()} to output to the console after acquiring the file system lock.
+
+3. \textbf{File descriptor lookup}: For other file operations, we:
+   - Get the current thread
+   - Acquire the file system lock to ensure thread safety
+   - Iterate through the thread's open files list to find the matching file descriptor
+   - Release the lock after finding the file (or not finding it)
+
+4. \textbf{Error handling}: If no matching file descriptor is found, we return -1 to indicate failure.
+
+5. \textbf{Performing I/O}: After finding the file:
+   - We reacquire the file system lock
+   - Based on the \texttt{is\_write} flag, we either:
+     - Call \texttt{file\_write()} to write data from user space to the file
+     - Call \texttt{file\_read()} to read data from the file into user space
+   - Release the lock after the operation
+
+6. \textbf{Memory safety}: Before accessing user memory, the \texttt{syscall\_handler} validates all user-provided addresses using \texttt{check\_user\_address()}, which verifies both that the address is in user space and that it's properly mapped in the page directory.
+
+This implementation ensures thread-safe file operations while properly handling the transition between kernel and user memory spaces.
 \end{quote}
 
+\newpage
 \textbf{Q11:} Suppose a system call causes a full page (4,096 bytes) of data to be copied from user space into the kernel.  What is the least and the greatest possible number of inspections of the page table (e.g. calls to \texttt{pagedir\_get\_page())} that might result?  What about for a system call that only copies 2 bytes of data?  Is there room for improvement in these numbers, and how much?
 \begin{quote}
-  Answer here
+When a system call copies a full page of data from user space into the kernel, the least number of inspections of the page table is 1, which occurs if the entire page is already in memory and mapped correctly, check\_user\_address() would only need to check the page table once.
+
+The greatest number of inspections would be 4,096, where each byte of the page is inspected individually to check if it is present in memory.
+
+This would be the case if the page table is not optimized and each byte is checked separately. 
+
+For a system call that only copies 2 bytes of data, the least number of inspections would be 1, if the page is already in memory and mapped correctly. The greatest number of inspections would be 2, if each byte is checked individually.
+
+There is room for improvement in these numbers by optimizing the page table to allow for larger chunks of data to be checked at once, rather than inspecting 4 bytes at a time. This could be done by using a more efficient data structure for the page table, or by implementing a caching mechanism to store the results of previous inspections.
 \end{quote}
 
+\newpage
 \textbf{Q12:} Briefly describe your implementation of the "wait" system call and how it interacts with process termination.
 \begin{quote}
-  Answer here
+Our implementation of the "wait" system call is centered around the \texttt{process\_wait()} function, which interacts with process termination through a synchronization mechanism:
+
+1. When a parent process calls \texttt{wait(child\_tid)}, it searches its list of children for the specified child process ID.
+
+2. If the child is found and hasn't been waited on before, the parent marks it as "waited" to prevent multiple waits on the same child.
+
+3. If the child hasn't exited yet, the parent blocks by calling \texttt{sema\_down()} on the child's exit semaphore (\texttt{exit\_sema}), which was initialized when the child was created.
+
+4. When the child process terminates in \texttt{process\_exit()}, it:
+   - Sets its exit status in the \texttt{process\_block} structure
+   - Marks itself as exited by setting \texttt{is\_exited} to true
+   - Calls \texttt{sema\_up()} on its exit semaphore to unblock the waiting parent
+
+5. After the parent is unblocked (either immediately if the child already exited, or after the child exits), it:
+   - Retrieves the child's exit status
+   - Removes the child's \texttt{process\_block} from its children list
+   - Frees the memory allocated for the child's process information
+   - Returns the exit status to the caller
+
+This implementation ensures proper synchronization between parent and child processes, allowing the parent to retrieve the child's exit status while preventing resource leaks.
 \end{quote}
 
+\newpage
 \textbf{Q13:} Any access to user program memory at a user-specified address can fail due to a bad pointer value.  Such accesses must cause the process to be terminated.  System calls are fraught with such accesses, e.g. a "write" system call requires reading the system call number from the user stack, then each of the call's three arguments, then an arbitrary amount of user memory, and any of these can fail at any point.  This poses a design and error-handling problem: how do you best avoid obscuring the primary function of code in a morass of error-handling?  Furthermore, when an error is detected, how do you ensure that all temporarily allocated resources (locks, buffers, etc.) are freed?  In a few paragraphs, describe the strategy or strategies you adopted for managing these issues.  Give an example.
 \begin{quote}
-  Answer here
+Our approach to handling user memory access errors focuses on early validation and clean termination:
+We implemented a \texttt{check\_user\_address()} function that validates any user-provided address before it's accessed. This function verifies both that the address is in user space and that it's properly mapped in the page directory. When invalid memory is detected, we immediately terminate the process with exit code -1.
+We validate all user addresses at the beginning of system calls before acquiring locks or allocating resources. For example, in the \texttt{SYS\_WRITE} handler, we check the buffer address before attempting any file operations.\\
+ The \texttt{process\_exit()} function handles cleanup of all resources (open files, memory, etc.) when a process terminates, ensuring no leaks occur even after abnormal termination.
+For example, in our \texttt{sys\_io()} function, we validate the buffer address before acquiring any locks. If validation fails, the process is terminated immediately. If validation passes but the file descriptor is invalid, we return -1 without touching any file resources. The file lock is only acquired when we're certain we have a valid file to operate on, and it's released immediately after the operation completes, ensuring it's never left in a locked state.
 \end{quote}
 
+\newpage
 \subsection{Synchronization}
 
 \textbf{Q14:} The "exec" system call returns -1 if loading the new executable fails, so it cannot return before the new executable has completed loading.  How does your code ensure this?  How is the load success/failure status passed back to the thread that calls "exec"?
 \begin{quote}
-  Answer here
+Our implementation ensures that the "exec" system call doesn't return before the new executable has completed loading through a synchronization mechanism using semaphores:
+
+1. When a parent process calls \texttt{exec}, it invokes \texttt{process\_execute()}, which creates a new thread for the child process.
+
+2. During child thread creation, we initialize a \texttt{load\_sema} semaphore in the child's \texttt{process\_block} structure with a value of 0.
+
+3. The parent thread then blocks by calling \texttt{sema\_down()} on this semaphore, ensuring it won't continue until the child signals it.
+
+4. In the child's thread function (\texttt{start\_process}), it attempts to load the executable. After loading succeeds or fails, it:
+   - Sets the \texttt{load\_status} field in its \texttt{process\_block} to indicate success or failure
+   - Calls \texttt{sema\_up()} on the \texttt{load\_sema} to unblock the parent
+
+5. When the parent wakes up, it checks the \texttt{load\_status} field:
+   - If loading succeeded, it returns the child's thread ID
+   - If loading failed, it returns -1
+
+This approach ensures that the parent process waits for the child to complete loading before returning from the exec system call, while also providing a mechanism to pass the load success/failure status back to the parent thread.
 \end{quote}
 
 \textbf{Q15:} Consider parent process P with child process C.  How do you ensure proper synchronization and avoid race conditions when P calls wait(C) before C exits?  After C exits?  How do you ensure that all resources are freed in each case? How about when P terminates without waiting, before C exits?  After C exits?  Are there any special cases?
 \begin{quote}
-  Answer here
+Our implementation ensures proper synchronization between parent and child processes through a combination of semaphores and status tracking:
+
+\textbf{When P calls wait(C) before C exits:}
+P searches its children list for C's process block
+If found, P checks if C has already been waited on (preventing multiple waits)
+If C hasn't exited yet, P blocks on C's exit semaphore (\texttt{exit\_sema})
+When C eventually exits, it signals this semaphore, unblocking P
+ P then retrieves C's exit status and frees C's process block
+
+\textbf{When P calls wait(C) after C exits:}
+P finds C's process block in its children list
+Since C has already set \texttt{is\_exited} to true, P doesn't need to block
+P directly retrieves C's saved exit status
+P removes C's process block from its children list and frees it
+
+\textbf{When P terminates without waiting, before C exits:}
+P's process resources are freed, but C continues execution independently
+C's process block remains in P's children list (which is freed when P exits)
+When C eventually exits, it still updates its exit status and signals its exit semaphore
+Since P is no longer waiting, the signal has no effect, but no resources are leaked
+
+\textbf{When P terminates without waiting, after C exits:}
+C has already updated its exit status and marked itself as exited
+P's termination frees all its resources, including C's process block
+No synchronization is needed since C has already completed
+
+\textbf{Special cases:}
+ If P exits while C is running, C becomes an orphan but continues execution
+ P maintains separate process blocks for each child, allowing independent waiting
+ If P attempts to wait on a non-existent child, it returns -1 immediately
 \end{quote}
 
 \subsection{Rationale}
 
 \textbf{Q16:} Why did you choose to implement access to user memory from the kernel in the way that you did?
 \begin{quote}
-  Answer here
+We chose to implement access to user memory from the kernel using a validation-first approach with the \texttt{check\_user\_address()} function.
+
+First of all, our implementation directly validates addresses before accessing them, making the code flow easy to understand and maintain. The validation function checks that the address is in user space (\texttt{is\_user\_vaddr()}) and that it's properly mapped in the page directory (\texttt{pagedir\_get\_page()}). By validating addresses at the beginning of system calls, we can catch invalid memory accesses before performing any operations. When an invalid address is detected, we immediately terminate the process with a -1 exit code. This approach avoids complex error propagation and ensures that kernel integrity is maintained. While our implementation checks addresses in 4-byte chunks, which is sufficient for most system call arguments, we recognize that for large buffers this approach could be optimized. However, we prioritized correctness and simplicity in our implementation.
+
+This approach balances simplicity and correctness, though at the cost of some performance optimization opportunities.
 \end{quote}
 
+\newpage
 \textbf{Q17:} What advantages or disadvantages can you see to your design for file descriptors?
 \begin{quote}
-  Answer here
+Our file descriptor design uses a list of file descriptor structures unique for each thread, containing a unique ID and a pointer to the actual file. This approach offers several advantages and disadvantages:
+
+\textbf{Advantages:}
+Each process maintains its own file descriptor table, preventing one process from accessing another's files directly, enhancing security.
+The \texttt{next\_fd} counter in each thread provides a straightforward way to assign unique IDs without complex management.
+The list-based approach allows for relatively quick lookups when a process has a moderate number of open files.
+When a process terminates, its file descriptor list makes it easy to identify and close all files it had open.
+The design easily accommodates special file descriptors (like stdin/stdout) alongside regular files.
+
+\textbf{Disadvantages:}
+Finding a file descriptor requires iterating through the list, which becomes inefficient for processes with many open files. A hash table or array-based approach might be faster.
+Our implementation uses a global file system lock, which can become a bottleneck when multiple processes perform file operations concurrently.
+Each file descriptor requires a separate allocation, which could lead to memory fragmentation with many small allocations.
+We don't implement per-process limits on the number of open files, which could lead to resource exhaustion.
+If a process doesn't explicitly close its files, they remain open until process termination, potentially wasting system resources.
 \end{quote}
 
 \textbf{Q18:} The default \texttt{tid\_t} to \texttt{pid\_t} mapping is the identity mapping. If you changed it, what advantages are there to your approach?
 \begin{quote}
-  Answer here
+We kept the default identity mapping between \texttt{tid\_t} and \texttt{pid\_t}, so each thread ID is used directly as the process ID. If we had changed this mapping, this could result in allowing multiple threads to share the same process ID, implementing multi-threaded user processes. However, for our project, the identity mapping has been kept simple and effective.
 \end{quote}
 
-
+\newpage
 \section{Survey Questions}
 
 Answering these questions is optional, but it will help us improve the course in future quarters.  Feel free to tell us anything you want--these questions are just to spur your thoughts.  You may also choose to respond anonymously in the course evaluations at the end of the quarter.
 
 \textbf{Q1:} In your opinion, was this assignment, or any one of the three problems in it, too easy or too hard?  Did it take too long or too little time?
 \begin{quote}
-  Answer here
+    We sincerely believe that the assignment was very challenging. The problems were
+	complex and required a deep understanding of the Pintos operating system. The
+	assignment took a lot of time to complete, and many problems we encountered
+	were because of our lack of experience with Pintos. The main problem for this
+	project was the lack of guidance and examples. Not only the assignment but also
+	the Pintos documentation was not very helpful. We believe that the assignment
+	would be more manageable if there were more examples and guidance on how to
+	approach the problems.
 \end{quote}
 
 \textbf{Q2:} Did you find that working on a particular part of the assignment gave you greater insight into some aspect of OS design?
 \begin{quote}
-  Answer here
+
 \end{quote}
 
 \textbf{Q3:} Is there some particular fact or hint we should give students in future quarters to help them solve the problems?  Conversely, did you find any of our guidance to be misleading?
 \begin{quote}
-  Answer here
 \end{quote}
 
+\newpage
 \textbf{Q4:} Do you have any suggestions for us to more effectively assist students,
 either for future semesters or the remaining projects?
 \begin{quote}
-  Answer here
+  Please provide more examples and guidance on how to approach the problems.
+	Sparing some time to talk, debate on the project in the classroom could be
+	an effective way to help students understand the concepts better, making the lessons
+	more interactive. Having short conversations about the common problems, key aspects
+	of the project before or after the lessons could prove to be very beneficial.
+	This is a popular method in many universities and it is proven to be very effective.
+
+    Sparing some time to talk, debate on the project in the classroom could be
+	an effective way to help students understand the concepts better, making the lessons
+	more interactive. Having short conversations about the common problems, key aspects
+	of the project before or after the lessons could prove to be very beneficial.
+	This is a popular method in many universities and it is proven to be very effective.
 \end{quote}
 
 \textbf{Q5:} Any other comments?
 \begin{quote}
-  Answer here
+Thank you for taking an interest in our feedback. We believe that the course
+	could be steered in a more beneficial direction if the suggestions we provided
+	above were taken into consideration. If the difficulty of the assignments could
+	be balanced, we believe we can learn many things from this course.
 \end{quote}
 
 
