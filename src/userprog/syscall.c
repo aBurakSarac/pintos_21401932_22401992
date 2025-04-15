@@ -71,7 +71,7 @@ static void syscall_handler (struct intr_frame *f) {
   }
   else if(syscall_number==SYS_REMOVE){
     check_user_address(f->esp + 4);
-    const char file_name = *(const char **)(f->esp + 4);
+    const char *file_name = *(const char **)(f->esp + 4);
     check_user_address(file_name);
     lock_acquire(&file_lock);
     f->eax = sys_remove(file_name);
@@ -211,6 +211,7 @@ int sys_open (const char *file_name)
   struct file *f = filesys_open(file_name);
   if (f == NULL){
     lock_release(&file_lock);
+    free(fd_struct);
     return -1;
   }
   lock_release(&file_lock);

@@ -89,6 +89,7 @@ process_execute (const char *file_name)
     child_t->cinfo = cinfo; 
 
   sema_down(&cinfo->load_sema);
+  palloc_free_page(cmd_copy);
   if (!cinfo->load_status) {
     list_remove(&cinfo->elem);
     palloc_free_page(cinfo);
@@ -188,6 +189,15 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  struct list_elem *e;
+  struct file_descriptor *fd = NULL;
+  while (!list_empty(&cur->open_files)) {
+    e = list_pop_front(&cur->open_files);
+    fd = list_entry(e, struct file_descriptor, elem);
+    file_close(fd->file);
+    free(fd);
+  }
   if (cur->executable != NULL)
   {
     file_allow_write(cur->executable);
@@ -432,6 +442,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     if (file != NULL)
       file_close(file);
   }
+  palloc_free_page(cmd_copy);
   return success;
 }
 
