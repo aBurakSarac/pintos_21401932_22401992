@@ -116,6 +116,10 @@ main (void)
   syscall_init ();
 #endif
 
+#ifdef VM
+  vm_init ();
+#endif
+
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
   serial_init_queue ();
