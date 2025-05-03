@@ -5,7 +5,7 @@
 #include "filesys/file.h"
 #include "threads/synch.h"
 
-enum vm_type { VM_BIN, VM_FILE, VM_ANON };
+enum vm_type { VM_BIN, VM_FILE, VM_ANON, VM_MMAP };
 
 struct vm_entry {
     void *vaddr;
@@ -16,12 +16,21 @@ struct vm_entry {
     size_t read_bytes;
     size_t zero_bytes;
     bool loaded; 
+    int mapid;
     struct hash_elem helem;
 };
 
 struct supplemental_page_table {
     struct hash pages;
     struct lock page_lock;
+};
+
+struct mmap_desc {
+    int mapid;
+    struct file *file;       
+    void *base_addr;      
+    size_t page_cnt;    
+    struct list_elem elem;
 };
 
 void spt_init(struct supplemental_page_table *spt);

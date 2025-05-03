@@ -10,12 +10,15 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/synch.h"
+#include "round.h"
 
 static void syscall_handler (struct intr_frame *);
 static void check_user_address(const void *addr);
 static int sys_open (const char *file_name);
 static struct file *get_file_by_fd (int fd);
 static int sys_io(int fd, const void *buffer, unsigned size, bool is_write);
+static int sys_mmap (int fd, void *uaddr);            
+static bool page_already_mapped (void *uaddr);    
 
 static struct lock file_lock;
 
@@ -193,6 +196,15 @@ static void syscall_handler (struct intr_frame *f) {
       break;
     }
 
+    case SYS_MMAP:
+    {
+      int fd = *(int *)(f->esp + 4);
+      void *uaddr = *(void **)(f->esp + 8);
+      check_user_address (uaddr);
+      f->eax = sys_mmap (fd, uaddr);
+      break;
+    }
+
     default:
       thread_current()->exit_code = -1;
       thread_exit();
@@ -270,6 +282,56 @@ sys_io(int fd, const void *buffer, unsigned size, bool is_write) {
   }
 }
 
+static int
+sys_mmap (int fd, void *uaddr)
+{
+  struct file *file = get_file_by_fd(fd); 
+  if (file == NULL)
+    return -1;
+
+  off_t length = file_length (file);
+  if (length == 0)
+    return -1;
+
+  int page_cnt = DIV_ROUND_UP (length, PGSIZE);
+  for (int i = 0; i < page_cnt; i++)
+    if (page_already_mapped (uaddr + i * PGSIZE))
+      return -1;
+
+  struct thread *cur = thread_current ();
+  struct mmap_desc *md = malloc (sizeof *md);
+  if (!md) return -1;
+  md->mapid     = cur->next_mapid++;
+  md->file      = file_reopen (file);
+  md->base_addr = uaddr;
+  md->page_cnt  = page_cnt;
+  list_push_back (&cur->mmap_list, &md->elem);
+
+  off_t offset = 0;
+  for (int i = 0; i < page_cnt; i++, offset += PGSIZE)
+    {
+      size_t read_bytes  = length >= PGSIZE ? PGSIZE : length;
+      size_t zero_bytes  = PGSIZE - read_bytes;
+      length -= read_bytes;
+
+      struct vm_entry *vme = malloc (sizeof *vme);
+
+      vme->vaddr       = uaddr + i * PGSIZE;
+      vme->writable    = true;
+      vme->type        = VM_MMAP;
+      vme->file        = md->file;
+      vme->offset      = offset;
+      vme->read_bytes  = read_bytes;
+      vme->zero_bytes  = zero_bytes;
+      vme->loaded      = false;
+      vme->mapid       = md->mapid;
+
+      if (!spt_insert (&cur->spt, vme))
+        return -1;
+    }
+
+  return md->mapid;
+}
 
 static struct file *get_file_by_fd (int fd) {
   struct thread *cur = thread_current();
@@ -285,4 +347,16 @@ static struct file *get_file_by_fd (int fd) {
   }
   lock_release(&file_lock);
   return NULL;
+}
+
+static bool
+page_already_mapped (void *uaddr)
+{
+  struct thread *cur = thread_current ();
+  if (pagedir_get_page (cur->pagedir, uaddr) != NULL)
+    return true;
+  if (spt_find (&cur->spt, uaddr) != NULL)
+    return true;
+
+  return false;
 }

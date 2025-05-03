@@ -554,6 +554,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       vme->read_bytes  = page_read_bytes;
       vme->zero_bytes  = page_zero_bytes;
       vme->loaded      = false;
+      vme->mapid       = -1;
 
       if (!spt_insert(&thread_current()->spt, vme)) {
         free (vme);
@@ -587,6 +588,8 @@ setup_stack (void **esp, int argc, char *argv[])
   vme->read_bytes  = 0;
   vme->zero_bytes  = PGSIZE;
   vme->loaded      = false;
+  vme->mapid       = -1;
+
   if (!spt_insert(&thread_current()->spt, vme)) {
     free(vme);
     return false;

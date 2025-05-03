@@ -118,6 +118,8 @@ struct thread
     int next_fd; 
     struct file *executable;
     struct supplemental_page_table spt;
+    struct list mmap_list;
+    int next_mapid;
 #endif
 
     /* Owned by thread.c. */

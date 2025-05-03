@@ -201,6 +201,13 @@ page_fault (struct intr_frame *f)
 
             case VM_ANON:
               break;
+
+            case VM_MMAP:
+              file_seek (vme->file, vme->offset);
+              if (file_read (vme->file, kpage, vme->read_bytes) != (int) vme->read_bytes)
+                  { frame_free(kpage); kill(f); }
+              memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
+              break;
           }
 
         if (!install_page (page, kpage, vme->writable))
