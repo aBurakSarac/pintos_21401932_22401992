@@ -25,5 +25,6 @@ struct file_descriptor {
     struct list_elem elem; 
 };
 
+bool install_page (void *upage, void *kpage, bool writable);
 
 #endif /* userprog/process.h */

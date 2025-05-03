@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/fixed-point.h"
 #include "threads/synch.h"
+#include "vm/page.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -116,6 +117,7 @@ struct thread
     struct list open_files;
     int next_fd; 
     struct file *executable;
+    struct supplemental_page_table spt;
 #endif
 
     /* Owned by thread.c. */
