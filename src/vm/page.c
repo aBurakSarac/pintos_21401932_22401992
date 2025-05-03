@@ -66,3 +66,14 @@ spt_remove(struct supplemental_page_table *spt, void *addr) {
         return NULL;
     }
 }
+
+bool
+should_grow_stack(void *fault_addr, void *esp) 
+{
+    if (fault_addr < PHYS_BASE
+        && fault_addr >= (void *)((uintptr_t)esp - 32))
+    {
+        return true;
+    }
+    return false;
+}

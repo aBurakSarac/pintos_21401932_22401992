@@ -4,6 +4,9 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -148,14 +151,65 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  if (!not_present)
+        kill (f);
+
+    void *page = pg_round_down (fault_addr);
+    struct supplemental_page_table *spt = &thread_current ()->spt;
+    struct vm_entry *vme = spt_find (spt, page);
+
+    if (vme == NULL && should_grow_stack (fault_addr, f->esp))
+      {
+        vme = malloc (sizeof *vme);
+        if (vme == NULL)
+          kill (f);
+        vme->vaddr      = page;
+        vme->writable   = true;
+        vme->type       = VM_ANON;
+        vme->file       = NULL;
+        vme->offset     = 0;
+        vme->read_bytes = 0;
+        vme->zero_bytes = PGSIZE;
+        vme->loaded     = false;
+        if (!spt_insert (spt, vme))
+          kill (f);
+      }
+
+    if (vme == NULL)
+        kill (f);
+
+    if (!vme->loaded)
+      {
+        void *kpage = frame_alloc (PAL_USER | PAL_ZERO);
+        if (kpage == NULL)
+          kill (f);
+
+        switch (vme->type)
+          {
+            case VM_BIN:
+            case VM_FILE:
+              file_seek (vme->file, vme->offset);
+              if (file_read (vme->file, kpage, vme->read_bytes)
+                  != (int) vme->read_bytes)
+                {
+                  frame_free (kpage);
+                  kill (f);
+                }
+              if (vme->zero_bytes > 0)
+                memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
+              break;
+
+            case VM_ANON:
+              break;
+          }
+
+        if (!install_page (page, kpage, vme->writable))
+          {
+            frame_free (kpage);
+            kill (f);
+          }
+
+        vme->loaded = true;
+      }
 }
 

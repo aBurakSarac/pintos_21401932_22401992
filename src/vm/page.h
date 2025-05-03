@@ -29,5 +29,6 @@ void spt_destroy(struct supplemental_page_table *spt);
 bool spt_insert(struct supplemental_page_table *spt, struct vm_entry *vme);
 struct vm_entry *spt_find(struct supplemental_page_table *spt, void *vaddr);
 struct vm_entry *spt_remove(struct supplemental_page_table *spt, void *vaddr);
+bool should_grow_stack(void *fault_addr, void *esp) ;
 
 #endif 

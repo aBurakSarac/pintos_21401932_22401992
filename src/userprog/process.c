@@ -523,7 +523,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      // Get a page of memory. 
+      /*// Get a page of memory. 
       uint8_t *kpage = frame_alloc (PAL_USER);
       if (kpage == NULL)
         return false;
@@ -541,7 +541,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         {
           palloc_free_page (kpage);
           return false; 
-        }
+        }*/
       
       struct vm_entry *vme = malloc (sizeof *vme);
       if (vme == NULL)
@@ -563,6 +563,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs        += page_read_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -591,54 +592,43 @@ setup_stack (void **esp, int argc, char *argv[])
     return false;
   }
 
-  uint8_t *kpage;
-  bool success = false;
+  void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
+  if (!kpage) return false;
+  if (!install_page(upage, kpage, true)) {
+    frame_free(kpage);
+    return false;
+  }
+  vme->loaded = true;
 
-  kpage = frame_alloc (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success){
-        vme->loaded = true;
-        char *stack_ptr = (char *)PHYS_BASE;
-        uint32_t *arg_addr[CMD_ARGS_MAX];
-        int i;
+  char *stack_ptr = (char *)PHYS_BASE;
+  uint32_t *arg_addr[CMD_ARGS_MAX];
+  int i;
+  for (i = argc - 1; i >= 0; i--) {
+    size_t len = strlen(argv[i]) + 1; 
+    stack_ptr -= len;
+    memcpy(stack_ptr, argv[i], len);
+    arg_addr[i] = (uint32_t *)stack_ptr;
+  }
+  while ((uintptr_t)stack_ptr % 4 != 0) {
+    stack_ptr--;
+    *stack_ptr = 0;
+  }
+  stack_ptr -= 4;
+  *(uint32_t *)stack_ptr = 0;
+  for (i = argc-1; i >= 0; i--) {
+    stack_ptr -= 4;
+    *(uint32_t *)stack_ptr = (uint32_t)arg_addr[i];
+  }
+  uint32_t argv_ptr = (uint32_t)stack_ptr;
+  stack_ptr -= 4;
+  *(uint32_t *)stack_ptr = argv_ptr;
+  stack_ptr -= 4;
+  *(int *)stack_ptr = argc;
+  stack_ptr -= 4;
+  *(uint32_t *)stack_ptr = 0;
+  *esp = stack_ptr;
 
-        for (i = argc - 1; i >= 0; i--) {
-          size_t len = strlen(argv[i]) + 1; 
-          stack_ptr -= len;
-          memcpy(stack_ptr, argv[i], len);
-          arg_addr[i] = (uint32_t *)stack_ptr;
-        }
-
-        while ((uintptr_t)stack_ptr % 4 != 0) {
-          stack_ptr--;
-          *stack_ptr = 0;
-        }
-
-        stack_ptr -= 4;
-        *(uint32_t *)stack_ptr = 0;
-
-        for (i = argc-1; i >= 0; i--) {
-          stack_ptr -= 4;
-          *(uint32_t *)stack_ptr = (uint32_t)arg_addr[i];
-        }
-
-        uint32_t argv_ptr = (uint32_t)stack_ptr;
-        stack_ptr -= 4;
-        *(uint32_t *)stack_ptr = argv_ptr;
-
-        stack_ptr -= 4;
-        *(int *)stack_ptr = argc;
-
-        stack_ptr -= 4;
-        *(uint32_t *)stack_ptr = 0;
-        *esp = stack_ptr;
-    }
-    else
-      palloc_free_page (kpage);
-    }
-  return success;
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
