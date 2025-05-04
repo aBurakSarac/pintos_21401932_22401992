@@ -171,6 +171,7 @@ page_fault (struct intr_frame *f)
         vme->read_bytes = 0;
         vme->zero_bytes = PGSIZE;
         vme->loaded     = false;
+        vme->mapid      = -1;
         if (!spt_insert (spt, vme))
           kill (f);
       }

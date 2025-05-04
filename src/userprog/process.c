@@ -203,6 +203,7 @@ process_exit (void)
     file_allow_write(cur->executable);
     file_close(cur->executable);
   }
+  spt_destroy(&cur->spt);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

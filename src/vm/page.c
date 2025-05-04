@@ -67,6 +67,23 @@ spt_remove(struct supplemental_page_table *spt, void *addr) {
     }
 }
 
+static void
+vm_entry_destroy(struct hash_elem *e, void *aux UNUSED) {
+    struct vm_entry *vme = hash_entry(e, struct vm_entry, helem);
+    if (vme->loaded) {
+        void *kpage = pagedir_get_page(thread_current()->pagedir, vme->vaddr);
+        frame_free(kpage);
+        pagedir_clear_page(thread_current()->pagedir,
+                           vme->vaddr);
+    }
+    free(vme);
+}
+
+void
+spt_destroy(struct supplemental_page_table *spt) {
+    hash_destroy(&spt->pages, vm_entry_destroy);
+}
+
 bool
 should_grow_stack(void *fault_addr, void *esp) 
 {
