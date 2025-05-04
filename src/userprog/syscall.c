@@ -11,13 +11,15 @@
 #include "filesys/filesys.h"
 #include "threads/synch.h"
 #include "round.h"
+#include "threads/malloc.h"
 
 static void syscall_handler (struct intr_frame *);
 static void check_user_address(const void *addr);
 static int sys_open (const char *file_name);
 static struct file *get_file_by_fd (int fd);
 static int sys_io(int fd, const void *buffer, unsigned size, bool is_write);
-static int sys_mmap (int fd, void *uaddr);            
+static int sys_mmap (int fd, void *uaddr);
+//static void sys_munmap (int mapid) ;            
 static bool page_already_mapped (void *uaddr);    
 
 static struct lock file_lock;
@@ -205,6 +207,13 @@ static void syscall_handler (struct intr_frame *f) {
       break;
     }
 
+    case SYS_MUNMAP:
+    {
+      int mapid = *(int *)(f->esp + 4);
+      sys_munmap (mapid);
+      break;
+    }
+
     default:
       thread_current()->exit_code = -1;
       thread_exit();
@@ -299,6 +308,8 @@ sys_mmap (int fd, void *uaddr)
     return -1;
 
   int page_cnt = DIV_ROUND_UP (length, PGSIZE);
+  if ((uint8_t *)uaddr + page_cnt * PGSIZE > (uint8_t *)PHYS_BASE)
+    return -1;
   for (int i = 0; i < page_cnt; i++)
     if (page_already_mapped (uaddr + i * PGSIZE))
       return -1;
@@ -308,6 +319,7 @@ sys_mmap (int fd, void *uaddr)
   if (!md) return -1;
   md->mapid     = cur->next_mapid++;
   md->file      = file_reopen (file);
+  file_deny_write(md->file);
   md->base_addr = uaddr;
   md->page_cnt  = page_cnt;
   list_push_back (&cur->mmap_list, &md->elem);
@@ -330,6 +342,7 @@ sys_mmap (int fd, void *uaddr)
       vme->zero_bytes  = zero_bytes;
       vme->loaded      = false;
       vme->mapid       = md->mapid;
+      vme->swap_slot   = -1;
 
       if (!spt_insert (&cur->spt, vme))
         return -1;
@@ -337,6 +350,48 @@ sys_mmap (int fd, void *uaddr)
 
   return md->mapid;
 }
+
+void
+sys_munmap (int mapid) 
+{
+    struct thread *cur = thread_current ();
+    struct list_elem *e = list_begin (&cur->mmap_list);
+
+    while (e != list_end (&cur->mmap_list)) 
+    {
+        struct mmap_desc *md = list_entry (e, struct mmap_desc, elem);
+        if (md->mapid == mapid) 
+        {
+            e = list_remove (e);
+            for (int i = 0; i < md->page_cnt; i++) 
+            {
+                void *uaddr = md->base_addr + i * PGSIZE;
+                struct vm_entry *vme = spt_remove (&cur->spt, uaddr);
+                
+                void *kpage = pagedir_get_page (cur->pagedir, uaddr);
+
+                if (kpage && pagedir_is_dirty (cur->pagedir, uaddr)) 
+                {
+                    file_write_at (md->file, kpage, vme->offset, vme->read_bytes);
+                    pagedir_set_dirty (cur->pagedir, uaddr, false);
+                }
+                pagedir_clear_page (cur->pagedir, uaddr);
+                if (kpage)
+                    frame_free (kpage);
+                free (vme);
+            }
+         
+            file_allow_write (md->file);
+            file_close (md->file);
+
+            free (md);
+            return;
+        }
+        else
+            e = list_next (e);
+    }
+}
+
 
 static struct file *get_file_by_fd (int fd) {
   struct thread *cur = thread_current();

@@ -21,6 +21,7 @@
 #include "vm/page.h"
 #include "vm/swap.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -205,6 +206,15 @@ process_exit (void)
     file_close(cur->executable);
   }
   spt_destroy(&cur->spt);
+
+for (struct list_elem *e = list_begin(&cur->mmap_list);
+     e != list_end(&cur->mmap_list); )
+{
+  struct mmap_desc *md = list_entry(e, struct mmap_desc, elem);
+  e = list_next(e);
+  sys_munmap(md->mapid);
+}
+
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
