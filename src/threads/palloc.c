@@ -180,3 +180,20 @@ page_from_pool (const struct pool *pool, void *page)
 
   return page_no >= start_page && page_no < end_page;
 }
+
+size_t
+palloc_get_pool_size (enum palloc_flags flags) 
+{
+  if ((flags & PAL_USER) == 0)
+    return 0;
+  size_t page_cnt = bitmap_size (user_pool.used_map);
+  return page_cnt * PGSIZE;
+}
+
+void *
+palloc_get_pool_start (enum palloc_flags flags)
+{
+  if ((flags & PAL_USER) == 0)
+    return NULL;
+  return user_pool.base;
+}
