@@ -18,6 +18,59 @@ vm_less(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) 
     return va->vaddr < vb->vaddr;
 }
 
+struct vm_entry *
+vm_entry_create (enum vm_type type, void *upage,
+                 struct file *file, off_t offset,
+                 size_t read_bytes, size_t zero_bytes,
+                 bool writable) 
+{
+    struct vm_entry *vme = malloc (sizeof *vme);
+    if (!vme)
+      return NULL;
+
+    vme->vaddr     = upage;
+    vme->type      = type;
+    vme->writable  = writable;
+    vme->loaded    = false;
+    vme->mapid     = -1;
+    vme->swap_slot = -1;
+
+    switch (type) 
+      {
+        case VM_BIN:
+          vme->file       = file;
+          vme->offset     = offset;
+          vme->read_bytes = read_bytes;
+          vme->zero_bytes = zero_bytes;
+          break;
+
+        case VM_ANON:
+          vme->file       = NULL;
+          vme->offset     = 0;
+          vme->read_bytes = 0;
+          vme->zero_bytes = PGSIZE;
+          break;
+
+        default:
+          NOT_REACHED ();
+      }
+
+    return vme;
+}
+
+
+static void
+vm_entry_destroy(struct hash_elem *e, void *aux UNUSED) {
+    struct vm_entry *vme = hash_entry(e, struct vm_entry, helem);
+    if (vme->loaded) {
+        void *kpage = pagedir_get_page(thread_current()->pagedir, vme->vaddr);
+        frame_free(kpage);
+        pagedir_clear_page(thread_current()->pagedir,
+                           vme->vaddr);
+    }
+    free(vme);
+}
+
 void
 spt_init(struct supplemental_page_table *spt) {
     lock_init(&spt->page_lock);
@@ -65,18 +118,6 @@ spt_remove(struct supplemental_page_table *spt, void *addr) {
     } else {
         return NULL;
     }
-}
-
-static void
-vm_entry_destroy(struct hash_elem *e, void *aux UNUSED) {
-    struct vm_entry *vme = hash_entry(e, struct vm_entry, helem);
-    if (vme->loaded) {
-        void *kpage = pagedir_get_page(thread_current()->pagedir, vme->vaddr);
-        frame_free(kpage);
-        pagedir_clear_page(thread_current()->pagedir,
-                           vme->vaddr);
-    }
-    free(vme);
 }
 
 void

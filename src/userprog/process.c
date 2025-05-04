@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/swap.h"
 #include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
@@ -515,7 +516,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -544,29 +545,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }*/
       
-      struct vm_entry *vme = malloc (sizeof *vme);
-      if (vme == NULL)
-        return false;
-      vme->vaddr       = upage;
-      vme->writable    = writable;
-      vme->type        = VM_BIN;
-      vme->file        = file;
-      vme->offset      = ofs;
-      vme->read_bytes  = page_read_bytes;
-      vme->zero_bytes  = page_zero_bytes;
-      vme->loaded      = false;
-      vme->mapid       = -1;
-
-      if (!spt_insert(&thread_current()->spt, vme)) {
+    struct vm_entry *vme = vm_entry_create (VM_BIN,
+                                upage, file, ofs,
+                                page_read_bytes, page_zero_bytes, writable);
+    if (!vme || !spt_insert (&thread_current ()->spt, vme)) 
+      {
         free (vme);
         return false;
       }
 
-      /* Advance. */
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      ofs        += page_read_bytes;
-      upage += PGSIZE;
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+    ofs        += page_read_bytes;
+    upage     += PGSIZE;
     }
   return true;
 }
@@ -578,23 +569,13 @@ setup_stack (void **esp, int argc, char *argv[])
 {
   
   void *upage = (uint8_t *) PHYS_BASE - PGSIZE;
-  struct vm_entry *vme = malloc(sizeof *vme);
-  if (vme == NULL)
-    return false;
-  vme->vaddr       = upage;
-  vme->writable    = true;
-  vme->type        = VM_ANON;
-  vme->file        = NULL;
-  vme->offset      = 0;
-  vme->read_bytes  = 0;
-  vme->zero_bytes  = PGSIZE;
-  vme->loaded      = false;
-  vme->mapid       = -1;
-
-  if (!spt_insert(&thread_current()->spt, vme)) {
-    free(vme);
-    return false;
-  }
+  struct vm_entry *vme = vm_entry_create (VM_ANON,
+                              upage, NULL, 0, 0, 0, true);
+  if (!vme || !spt_insert (&thread_current ()->spt, vme))
+    {
+      free (vme);
+      return false;
+    }
 
   void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
   if (!kpage) return false;

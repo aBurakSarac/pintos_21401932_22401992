@@ -17,6 +17,7 @@ struct vm_entry {
     size_t zero_bytes;
     bool loaded; 
     int mapid;
+    int swap_slot;
     struct hash_elem helem;
 };
 
