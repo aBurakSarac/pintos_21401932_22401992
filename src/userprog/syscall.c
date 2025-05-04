@@ -285,6 +285,11 @@ sys_io(int fd, const void *buffer, unsigned size, bool is_write) {
 static int
 sys_mmap (int fd, void *uaddr)
 {
+  if ((uintptr_t)uaddr % PGSIZE != 0 || uaddr == NULL)
+    return -1;
+  if (uaddr >= PHYS_BASE)
+    return -1;
+
   struct file *file = get_file_by_fd(fd); 
   if (file == NULL)
     return -1;

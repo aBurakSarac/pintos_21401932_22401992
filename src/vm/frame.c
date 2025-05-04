@@ -8,11 +8,14 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+#include "threads/thread.h"
 
 static struct lock vm_lock;
 struct bitmap *frame_bitmap;
 void        **frame_kpages;
 size_t        frame_count;
+static struct vm_entry **frame_rev_map;
+static size_t clock_ptr;
 
 void
 frame_table_init(void) {
@@ -21,13 +24,16 @@ frame_table_init(void) {
 
     frame_bitmap = bitmap_create(frame_count);
     frame_kpages  = malloc(sizeof(void*) * frame_count);
+    frame_rev_map = malloc(sizeof(struct vm_entry*) * frame_count);
 
     for (size_t i = 0; i < frame_count; i++) {
         bitmap_reset(frame_bitmap, i);
         frame_kpages[i] = NULL;
+        frame_rev_map[i] = NULL;
     }
 
     lock_init(&vm_lock);
+    clock_ptr = 0;
 }
 
 void *
@@ -43,9 +49,32 @@ frame_alloc(enum palloc_flags flag) {
     }
     kpage = palloc_get_page(flag | PAL_ASSERT | PAL_ZERO);
     if (!kpage) {
-        bitmap_reset(frame_bitmap, idx);
-        lock_release(&vm_lock);
-        return NULL;
+        struct vm_entry *victim = NULL;
+        while (true) {
+            victim = frame_rev_map[clock_ptr];
+            if (victim == NULL
+                || !pagedir_is_accessed(thread_current()->pagedir,
+                                        victim->vaddr))
+                break;
+            pagedir_set_accessed(thread_current()->pagedir,
+                                 victim->vaddr, false);
+            clock_ptr = (clock_ptr + 1) % frame_count;
+        }
+        idx = clock_ptr;
+        if (victim != NULL
+            && pagedir_is_dirty(thread_current()->pagedir,
+                                victim->vaddr)) {
+            int slot = swap_out(frame_kpages[idx]);
+            victim->swap_slot = slot;
+        }
+        
+
+        if (victim)
+            pagedir_clear_page(thread_current()->pagedir,
+                               victim->vaddr);
+        frame_rev_map[idx] = NULL;
+        frame_kpages[idx]  = NULL;
+        clock_ptr = (clock_ptr + 1) % frame_count;
     }
 
     frame_kpages[idx] = kpage;
