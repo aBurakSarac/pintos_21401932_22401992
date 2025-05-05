@@ -22,7 +22,7 @@ static int sys_mmap (int fd, void *uaddr);
 static int sys_munmap (int mapid) ;            
 static bool page_already_mapped (void *uaddr);    
 
-static struct lock file_lock;
+struct lock file_lock;
 
 void
 syscall_init (void) 
@@ -268,7 +268,8 @@ sys_io(int fd, const void *buffer, unsigned size, bool is_write) {
     struct list_elem *e;
     struct file_descriptor *fd_struct = NULL;
     struct file_descriptor *temp;
-    lock_acquire(&file_lock);
+    if(!lock_held_by_current_thread(&file_lock))
+      lock_acquire(&file_lock);
     for (e = list_begin(&cur->open_files); e != list_end(&cur->open_files); e = list_next(e)) {
       temp = list_entry(e, struct file_descriptor, elem);
       if (temp->file_id == fd) {
@@ -276,17 +277,23 @@ sys_io(int fd, const void *buffer, unsigned size, bool is_write) {
         break;
       }
     }
-    lock_release(&file_lock);
+    if(lock_held_by_current_thread(&file_lock))
+      lock_release(&file_lock);
+    if(lock_held_by_current_thread(&file_lock))
+      lock_release(&file_lock);
     if (fd_struct == NULL)
       return -1;
     int result;
-    lock_acquire(&file_lock);
+    if(!lock_held_by_current_thread(&file_lock))
+      lock_acquire(&file_lock);
     if(is_write) {
       result = file_write(fd_struct->file, buffer, size);
     } else {
       result = file_read(fd_struct->file, buffer, size);
     }
+    if(lock_held_by_current_thread(&file_lock))
     lock_release(&file_lock);
+
     return result;
   }
 }

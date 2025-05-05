@@ -7,6 +7,8 @@
 #include "threads/vaddr.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "userprog/syscall.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -190,13 +192,19 @@ page_fault (struct intr_frame *f)
           {
             case VM_BIN:
             case VM_FILE:
+              if(!lock_held_by_current_thread (&file_lock))
+                lock_acquire (&file_lock);
               file_seek (vme->file, vme->offset);
               if (file_read (vme->file, kpage, vme->read_bytes)
                   != (int) vme->read_bytes)
                 {
+                  if(lock_held_by_current_thread (&file_lock))
+                    lock_release (&file_lock);
                   frame_free (kpage);
                   kill (f);
                 }
+              if(lock_held_by_current_thread (&file_lock))
+                lock_release (&file_lock);
               if (vme->zero_bytes > 0)
                 memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
               break;
@@ -205,9 +213,17 @@ page_fault (struct intr_frame *f)
               break;
 
             case VM_MMAP:
+            if(!lock_held_by_current_thread (&file_lock))
+                lock_acquire (&file_lock);
               file_seek (vme->file, vme->offset);
-              if (file_read (vme->file, kpage, vme->read_bytes) != (int) vme->read_bytes)
-                  { frame_free(kpage); kill(f); }
+              if (file_read (vme->file, kpage, vme->read_bytes) != (int) vme->read_bytes){
+                if(lock_held_by_current_thread (&file_lock))
+                  lock_release (&file_lock);
+                 frame_free(kpage); 
+                 kill(f); 
+              }
+              if(lock_held_by_current_thread (&file_lock))
+                    lock_release (&file_lock);
               memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
               break;
           }
