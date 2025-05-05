@@ -53,3 +53,12 @@ swap_in(int slot, void *kpage) {
   lock_release(&swap_lock);
   return true;
 }
+
+void
+swap_free (int slot)
+{
+  ASSERT (slot >= 0 && slot < swap_slots);
+  lock_acquire(&swap_lock);
+  bitmap_reset(swap_bitmap, slot);
+  lock_release(&swap_lock);
+}

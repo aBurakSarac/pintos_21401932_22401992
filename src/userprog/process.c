@@ -205,15 +205,40 @@ process_exit (void)
     file_allow_write(cur->executable);
     file_close(cur->executable);
   }
+  while (!list_empty(&cur->mmap_list)) 
+    {
+      struct list_elem *me = list_pop_front(&cur->mmap_list);
+      struct mmap_desc *md = list_entry(me, struct mmap_desc, elem);
+
+      for (int i = 0; i < md->page_cnt; i++) 
+        {
+          void *upage = md->base_addr + i * PGSIZE;
+          struct vm_entry *vme = spt_remove(&cur->spt, upage);
+          if (!vme)
+            continue;
+
+          if (vme->loaded) 
+            {
+              void *kpage = pagedir_get_page(cur->pagedir, upage);
+              if (kpage && pagedir_is_dirty(cur->pagedir, upage))
+                file_write_at(md->file, kpage, vme->read_bytes, vme->offset);
+              pagedir_clear_page(cur->pagedir, upage);
+              if (kpage)
+                frame_free(kpage);
+            }
+
+          if (vme->swap_slot != -1)
+            swap_free(vme->swap_slot);
+
+          free(vme);
+        }
+
+      file_allow_write(md->file);
+      file_close(md->file);
+      free(md);
+    }
   spt_destroy(&cur->spt);
 
-for (struct list_elem *e = list_begin(&cur->mmap_list);
-     e != list_end(&cur->mmap_list); )
-{
-  struct mmap_desc *md = list_entry(e, struct mmap_desc, elem);
-  e = list_next(e);
-  sys_munmap(md->mapid);
-}
 
 
   /* Destroy the current process's page directory and switch back

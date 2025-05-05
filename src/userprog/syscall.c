@@ -19,7 +19,7 @@ static int sys_open (const char *file_name);
 static struct file *get_file_by_fd (int fd);
 static int sys_io(int fd, const void *buffer, unsigned size, bool is_write);
 static int sys_mmap (int fd, void *uaddr);
-//static void sys_munmap (int mapid) ;            
+static int sys_munmap (int mapid) ;            
 static bool page_already_mapped (void *uaddr);    
 
 static struct lock file_lock;
@@ -202,7 +202,6 @@ static void syscall_handler (struct intr_frame *f) {
     {
       int fd = *(int *)(f->esp + 4);
       void *uaddr = *(void **)(f->esp + 8);
-      check_user_address (uaddr);
       f->eax = sys_mmap (fd, uaddr);
       break;
     }
@@ -210,6 +209,7 @@ static void syscall_handler (struct intr_frame *f) {
     case SYS_MUNMAP:
     {
       int mapid = *(int *)(f->esp + 4);
+      f->eax = sys_munmap (mapid);
       sys_munmap (mapid);
       break;
     }
@@ -351,7 +351,7 @@ sys_mmap (int fd, void *uaddr)
   return md->mapid;
 }
 
-void
+static int
 sys_munmap (int mapid) 
 {
     struct thread *cur = thread_current ();
@@ -367,29 +367,35 @@ sys_munmap (int mapid)
             {
                 void *uaddr = md->base_addr + i * PGSIZE;
                 struct vm_entry *vme = spt_remove (&cur->spt, uaddr);
-                
-                void *kpage = pagedir_get_page (cur->pagedir, uaddr);
-
-                if (kpage && pagedir_is_dirty (cur->pagedir, uaddr)) 
+                if (!vme)
+                  continue;
+                if (vme->loaded)
                 {
-                    file_write_at (md->file, kpage, vme->offset, vme->read_bytes);
-                    pagedir_set_dirty (cur->pagedir, uaddr, false);
+                  void *kpage = pagedir_get_page (cur->pagedir, uaddr);
+                  if (kpage && pagedir_is_dirty (cur->pagedir, uaddr)) 
+                  {
+                      file_write_at (md->file, kpage, vme->offset, vme->read_bytes);
+                      pagedir_set_dirty (cur->pagedir, uaddr, false);
+                  }
+                  pagedir_clear_page (cur->pagedir, uaddr);
+                  if (kpage)
+                      frame_free (kpage);
                 }
-                pagedir_clear_page (cur->pagedir, uaddr);
-                if (kpage)
-                    frame_free (kpage);
-                free (vme);
+                if (vme->swap_slot != -1) 
+                {
+                    swap_free (vme->swap_slot);
+                    free (vme);
+                }
             }
          
             file_allow_write (md->file);
             file_close (md->file);
-
             free (md);
-            return;
+            return 0;
         }
-        else
-            e = list_next (e);
+        e = list_next (e);
     }
+    return -1;
 }
 
 

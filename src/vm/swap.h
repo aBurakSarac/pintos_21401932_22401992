@@ -5,4 +5,5 @@
 void swap_init(void);
 int  swap_out(void *kpage);
 bool swap_in(int slot, void *kpage);
+void swap_free(int slot);
 #endif
