@@ -12,15 +12,17 @@
 #include "threads/synch.h"
 #include "round.h"
 #include "threads/malloc.h"
+#include "threads/pte.h"
 
 static void syscall_handler (struct intr_frame *);
-static void check_user_address(const void *addr);
+static void check_user_address(const void *addr, int size, bool is_write);
 static int sys_open (const char *file_name);
 static struct file *get_file_by_fd (int fd);
 static int sys_io(int fd, const void *buffer, unsigned size, bool is_write);
 static int sys_mmap (int fd, void *uaddr);
 static int sys_munmap (int mapid) ;            
 static bool page_already_mapped (void *uaddr);    
+static void unmap_mapping (struct mmap_desc *md);
 
 struct lock file_lock;
 
@@ -33,8 +35,7 @@ syscall_init (void)
 
 static void syscall_handler (struct intr_frame *f) {
   int syscall_number;
-  check_user_address(f->esp);
-  check_user_address(f->esp + 4);
+  check_user_address(f->esp, 8, false);
   syscall_number = *(int *)f->esp;
   switch (syscall_number) {
     case SYS_HALT:
@@ -43,6 +44,7 @@ static void syscall_handler (struct intr_frame *f) {
 
     case SYS_EXIT: {
       int status = *(int *)(f->esp + 4);
+      //check_user_address(status, 4, false);
       thread_current()->exit_code = status;
       thread_exit();
       break;
@@ -51,7 +53,7 @@ static void syscall_handler (struct intr_frame *f) {
     case SYS_EXEC: {
       const char *cmd_line;
       cmd_line = *(const char **)(f->esp + 4);
-      check_user_address(cmd_line);
+      check_user_address(cmd_line, 4, false);
       f->eax = process_execute(cmd_line);
       break;
     }
@@ -66,9 +68,7 @@ static void syscall_handler (struct intr_frame *f) {
     case SYS_CREATE: {
       const char *file_name;
       file_name = *(const char **)(f->esp + 4);
-      check_user_address(file_name);
-      check_user_address(f->esp + 8);
-
+      check_user_address(file_name, 8, false);
       unsigned initial_size;
       initial_size = *(unsigned *)(f->esp + 8);
 
@@ -79,9 +79,8 @@ static void syscall_handler (struct intr_frame *f) {
     case SYS_REMOVE: {
       const char *file_name ;
       file_name = *(const char **)(f->esp + 4);
-      check_user_address(file_name);
+      //check_user_address(file_name, 4, false);
 
-      
       if (file_name == NULL)
         f->eax = false;
       lock_acquire(&file_lock);
@@ -95,7 +94,7 @@ static void syscall_handler (struct intr_frame *f) {
     case SYS_OPEN: {
       char *file_name ;
       file_name = *((char **)(f->esp + 4));
-      check_user_address(file_name);
+      check_user_address(file_name, 4, false);
       
       int fd = sys_open(file_name);
       f->eax = fd;
@@ -118,6 +117,14 @@ static void syscall_handler (struct intr_frame *f) {
     }
 
     case SYS_READ: {
+      //check_user_address(f->esp + 4, 4, false);
+      int fd = *((int *)(f->esp + 4));
+      void *buffer = *((void **)(f->esp + 8));
+      unsigned size = *((unsigned *)(f->esp + 12));
+      check_user_address(buffer, 4, true);
+      f->eax = sys_io(fd, buffer, size, false);
+      break;
+      /*
       int fd = *((int *)(f->esp + 4));
 
       check_user_address(f->esp + 8);
@@ -130,9 +137,18 @@ static void syscall_handler (struct intr_frame *f) {
       int read = sys_io(fd, buffer, size, false);
       f->eax = read;
       break;
+      */
     }
 
     case SYS_WRITE: {
+        //check_user_address (f->esp + 4, 4, false);
+        int fd = *(int *) (f->esp + 4);
+        void *buffer = *(void **) (f->esp + 8);
+        unsigned size   = *(unsigned *) (f->esp + 12);
+        check_user_address (buffer, 8, false);
+        f->eax = sys_io (fd, buffer, size, true);
+        break;     
+      /*
       int fd = *((int *)(f->esp + 4));
 
       check_user_address(f->esp + 8);
@@ -144,9 +160,25 @@ static void syscall_handler (struct intr_frame *f) {
 
       f->eax = sys_io(fd, buffer, size, true);
       break;
+      */
     }
 
     case SYS_SEEK: {
+      check_user_address(f->esp + 4, 8, false);
+      int fd = *(int *)(f->esp + 4);
+      unsigned position = *(unsigned *)(f->esp + 8);
+
+      struct file *file = get_file_by_fd(fd);
+      if (file == NULL) {
+        f->eax = -1;
+      } else {
+        lock_acquire(&file_lock);
+        file_seek(file, position);
+        lock_release(&file_lock);
+        f->eax = 0;
+      }
+      break;
+      /*
       int fd = *(int *)(f->esp + 4);
       check_user_address(f->esp + 8);
       unsigned position = *(unsigned *)(f->esp + 8);
@@ -160,6 +192,7 @@ static void syscall_handler (struct intr_frame *f) {
         lock_release(&file_lock);
       }
       break;
+      */
     }
 
     case SYS_TELL: {
@@ -221,12 +254,20 @@ static void syscall_handler (struct intr_frame *f) {
   }
 }
 
-static void check_user_address(const void *addr) {
-  for (int i = 0; i < 4; i++) {
+static void check_user_address(const void *addr, int size, bool is_write) {
+  for (int i = 0; i < size; i++) {
     if (!is_user_vaddr(addr + i) || pagedir_get_page(thread_current()->pagedir, addr+i) == NULL)
     {
       thread_current()->exit_code = -1;
       thread_exit();
+    }
+
+    if (is_write) {
+      uint32_t *p = lookup_page(thread_current()->pagedir, addr + i, false);
+      if (p == NULL || !(*p & PTE_W)) {
+        thread_current()->exit_code = -1;
+        thread_exit();
+      }
     }
   } 
 }
@@ -277,8 +318,6 @@ sys_io(int fd, const void *buffer, unsigned size, bool is_write) {
         break;
       }
     }
-    if(lock_held_by_current_thread(&file_lock))
-      lock_release(&file_lock);
     if(lock_held_by_current_thread(&file_lock))
       lock_release(&file_lock);
     if (fd_struct == NULL)
