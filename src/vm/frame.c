@@ -9,6 +9,7 @@
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "vm/swap.h"
 
 static struct lock vm_lock;
 struct bitmap *frame_bitmap;
@@ -47,7 +48,7 @@ frame_alloc(enum palloc_flags flag) {
         lock_release(&vm_lock);
         return NULL;
     }
-    kpage = palloc_get_page(flag | PAL_ASSERT | PAL_ZERO);
+    kpage = palloc_get_page(flag | PAL_ZERO);
     if (!kpage) {
         struct vm_entry *victim = NULL;
         while (true) {
@@ -102,4 +103,14 @@ frame_free(void *kpage) {
 
     lock_release(&vm_lock);
     return;
+}
+
+void
+frame_set_rev_map(void *kpage, struct vm_entry *vme) 
+{
+  uintptr_t base = (uintptr_t) palloc_get_pool_start(PAL_USER);
+  size_t idx    = ((uintptr_t) kpage - base) / PGSIZE;
+  lock_acquire(&vm_lock);
+  frame_rev_map[idx] = vme;
+  lock_release(&vm_lock);
 }

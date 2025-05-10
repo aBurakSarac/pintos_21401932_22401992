@@ -197,13 +197,17 @@ process_exit (void)
   while (!list_empty(&cur->open_files)) {
     e = list_pop_front(&cur->open_files);
     fd = list_entry(e, struct file_descriptor, elem);
+    lock_acquire(&file_lock);
     file_close(fd->file);
+    lock_release(&file_lock);
     free(fd);
   }
   if (cur->executable != NULL)
   {
+    lock_acquire(&file_lock);
     file_allow_write(cur->executable);
     file_close(cur->executable);
+    lock_release(&file_lock);
   }
   while (!list_empty(&cur->mmap_list)) 
     {
@@ -220,8 +224,14 @@ process_exit (void)
           if (vme->loaded) 
             {
               void *kpage = pagedir_get_page(cur->pagedir, upage);
-              if (kpage && pagedir_is_dirty(cur->pagedir, upage))
+              if (kpage && pagedir_is_dirty(cur->pagedir, upage)){
+                //if(!lock_held_by_current_thread (&file_lock))
+                  lock_acquire (&file_lock);
                 file_write_at(md->file, kpage, vme->read_bytes, vme->offset);
+                //if(lock_held_by_current_thread (&file_lock))
+                  lock_release (&file_lock);
+                  //pagedir_set_dirty(cur->pagedir, upage, false);
+              }
               pagedir_clear_page(cur->pagedir, upage);
               if (kpage)
                 frame_free(kpage);
@@ -232,9 +242,10 @@ process_exit (void)
 
           free(vme);
         }
-
+      lock_acquire(&file_lock);
       file_allow_write(md->file);
       file_close(md->file);
+      lock_release(&file_lock);
       free(md);
     }
   spt_destroy(&cur->spt);
@@ -551,7 +562,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  //file_seek (file, ofs);
+  file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -583,7 +594,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     struct vm_entry *vme = vm_entry_create (VM_BIN,
                                 upage, file, ofs,
                                 page_read_bytes, page_zero_bytes, writable);
-    if (!vme || !spt_insert (&thread_current ()->spt, vme)) 
+    if (!spt_insert (&thread_current ()->spt, vme)) 
       {
         free (vme);
         return false;
@@ -612,6 +623,7 @@ setup_stack (void **esp, int argc, char *argv[])
       return false;
     }
 
+  
   void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
   if (!kpage) return false;
   if (!install_page(upage, kpage, true)) {

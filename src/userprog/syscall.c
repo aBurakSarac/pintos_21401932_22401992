@@ -364,8 +364,10 @@ sys_mmap (int fd, void *uaddr)
   struct mmap_desc *md = malloc (sizeof *md);
   if (!md) return -1;
   md->mapid     = cur->next_mapid++;
+  lock_acquire (&file_lock);
   md->file      = file_reopen (file);
   file_deny_write(md->file);
+  lock_release (&file_lock);
   md->base_addr = uaddr;
   md->page_cnt  = page_cnt;
   list_push_back (&cur->mmap_list, &md->elem);
@@ -419,9 +421,10 @@ sys_munmap (int mapid)
                 {
                   void *kpage = pagedir_get_page (cur->pagedir, uaddr);
                   if (kpage && pagedir_is_dirty (cur->pagedir, uaddr)) 
-                  {
-                      file_write_at (md->file, kpage, vme->offset, vme->read_bytes);
+                  {   lock_acquire (&file_lock);
+                      file_write_at (md->file, kpage, vme->read_bytes, vme->offset);
                       pagedir_set_dirty (cur->pagedir, uaddr, false);
+                      lock_release (&file_lock);
                   }
                   pagedir_clear_page (cur->pagedir, uaddr);
                   if (kpage)
@@ -433,9 +436,10 @@ sys_munmap (int mapid)
                     free (vme);
                 }
             }
-         
+            lock_acquire (&file_lock);
             file_allow_write (md->file);
             file_close (md->file);
+            lock_release (&file_lock);
             free (md);
             return 0;
         }

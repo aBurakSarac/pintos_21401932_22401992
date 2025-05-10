@@ -181,6 +181,24 @@ page_fault (struct intr_frame *f)
 
     if (vme == NULL)
         kill (f);
+    
+
+        if (vme->swap_slot != -1) {
+          void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
+          if (kpage == NULL) 
+            kill(f);
+          if (!swap_in(vme->swap_slot, kpage))
+            kill(f);
+          vme->swap_slot = -1;
+      
+
+          if (!install_page(page, kpage, vme->writable)) {
+            frame_free(kpage);
+            kill(f);
+          }
+          vme->loaded = true;
+          return;
+        }
 
     if (!vme->loaded)
       {
@@ -188,21 +206,14 @@ page_fault (struct intr_frame *f)
         if (kpage == NULL)
           kill (f);
 
+        
         switch (vme->type)
           {
             case VM_BIN:
             case VM_FILE:
               if(!lock_held_by_current_thread (&file_lock))
                 lock_acquire (&file_lock);
-              file_seek (vme->file, vme->offset);
-              if (file_read (vme->file, kpage, vme->read_bytes)
-                  != (int) vme->read_bytes)
-                {
-                  if(lock_held_by_current_thread (&file_lock))
-                    lock_release (&file_lock);
-                  frame_free (kpage);
-                  kill (f);
-                }
+                file_read_at(vme->file, kpage, vme->read_bytes, vme->offset);
               if(lock_held_by_current_thread (&file_lock))
                 lock_release (&file_lock);
               if (vme->zero_bytes > 0)
@@ -213,21 +224,15 @@ page_fault (struct intr_frame *f)
               break;
 
             case VM_MMAP:
-            if(!lock_held_by_current_thread (&file_lock))
+              if(!lock_held_by_current_thread (&file_lock))
                 lock_acquire (&file_lock);
-              file_seek (vme->file, vme->offset);
-              if (file_read (vme->file, kpage, vme->read_bytes) != (int) vme->read_bytes){
-                if(lock_held_by_current_thread (&file_lock))
-                  lock_release (&file_lock);
-                 frame_free(kpage); 
-                 kill(f); 
-              }
+              file_read_at(vme->file, kpage, vme->read_bytes, vme->offset);
               if(lock_held_by_current_thread (&file_lock))
                     lock_release (&file_lock);
               memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
               break;
           }
-
+          frame_set_rev_map(kpage, vme);
         if (!install_page (page, kpage, vme->writable))
           {
             frame_free (kpage);
