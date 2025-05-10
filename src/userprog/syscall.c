@@ -44,7 +44,6 @@ static void syscall_handler (struct intr_frame *f) {
 
     case SYS_EXIT: {
       int status = *(int *)(f->esp + 4);
-      //check_user_address(status, 4, false);
       thread_current()->exit_code = status;
       thread_exit();
       break;
@@ -79,7 +78,6 @@ static void syscall_handler (struct intr_frame *f) {
     case SYS_REMOVE: {
       const char *file_name ;
       file_name = *(const char **)(f->esp + 4);
-      //check_user_address(file_name, 4, false);
 
       if (file_name == NULL)
         f->eax = false;
@@ -117,50 +115,21 @@ static void syscall_handler (struct intr_frame *f) {
     }
 
     case SYS_READ: {
-      //check_user_address(f->esp + 4, 4, false);
       int fd = *((int *)(f->esp + 4));
       void *buffer = *((void **)(f->esp + 8));
       unsigned size = *((unsigned *)(f->esp + 12));
       check_user_address(buffer, 4, true);
       f->eax = sys_io(fd, buffer, size, false);
       break;
-      /*
-      int fd = *((int *)(f->esp + 4));
-
-      check_user_address(f->esp + 8);
-      void *buffer = *((void **)(f->esp + 8));
-      check_user_address(buffer);
-
-      check_user_address(f->esp + 12);
-      unsigned size = *((unsigned *)(f->esp + 12));
-
-      int read = sys_io(fd, buffer, size, false);
-      f->eax = read;
-      break;
-      */
     }
 
     case SYS_WRITE: {
-        //check_user_address (f->esp + 4, 4, false);
         int fd = *(int *) (f->esp + 4);
         void *buffer = *(void **) (f->esp + 8);
         unsigned size   = *(unsigned *) (f->esp + 12);
         check_user_address (buffer, 8, false);
         f->eax = sys_io (fd, buffer, size, true);
         break;     
-      /*
-      int fd = *((int *)(f->esp + 4));
-
-      check_user_address(f->esp + 8);
-      void *buffer = *((void **)(f->esp + 8));
-      check_user_address(buffer);
-
-      check_user_address(f->esp + 12);
-      unsigned size = *((unsigned *)(f->esp + 12));
-
-      f->eax = sys_io(fd, buffer, size, true);
-      break;
-      */
     }
 
     case SYS_SEEK: {
@@ -178,21 +147,6 @@ static void syscall_handler (struct intr_frame *f) {
         f->eax = 0;
       }
       break;
-      /*
-      int fd = *(int *)(f->esp + 4);
-      check_user_address(f->esp + 8);
-      unsigned position = *(unsigned *)(f->esp + 8);
-
-      struct file *file = get_file_by_fd(fd);
-      if (file == NULL) {
-        f->eax = -1;
-      } else {
-        lock_acquire(&file_lock);
-        file_seek(file, position);
-        lock_release(&file_lock);
-      }
-      break;
-      */
     }
 
     case SYS_TELL: {
@@ -243,7 +197,6 @@ static void syscall_handler (struct intr_frame *f) {
     {
       int mapid = *(int *)(f->esp + 4);
       f->eax = sys_munmap (mapid);
-      sys_munmap (mapid);
       break;
     }
 
@@ -366,7 +319,7 @@ sys_mmap (int fd, void *uaddr)
   md->mapid     = cur->next_mapid++;
   lock_acquire (&file_lock);
   md->file      = file_reopen (file);
-  file_deny_write(md->file);
+
   lock_release (&file_lock);
   md->base_addr = uaddr;
   md->page_cnt  = page_cnt;
@@ -437,7 +390,6 @@ sys_munmap (int mapid)
                 }
             }
             lock_acquire (&file_lock);
-            file_allow_write (md->file);
             file_close (md->file);
             lock_release (&file_lock);
             free (md);
