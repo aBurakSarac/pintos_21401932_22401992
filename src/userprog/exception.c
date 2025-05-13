@@ -154,92 +154,91 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   if (!not_present)
-        kill (f);
+    kill (f);
 
-    void *page = pg_round_down (fault_addr);
-    struct supplemental_page_table *spt = &thread_current ()->spt;
-    struct vm_entry *vme = spt_find (spt, page);
+  void *page = pg_round_down (fault_addr);
+  struct supplemental_page_table *spt = &thread_current ()->spt;
+  struct vm_entry *vme = spt_find (spt, page);
 
-    if (vme == NULL && should_grow_stack (fault_addr, f->esp))
-      {
-        vme = malloc (sizeof *vme);
-        if (vme == NULL)
-          kill (f);
-        vme->vaddr      = page;
-        vme->writable   = true;
-        vme->type       = VM_ANON;
-        vme->file       = NULL;
-        vme->offset     = 0;
-        vme->read_bytes = 0;
-        vme->zero_bytes = PGSIZE;
-        vme->loaded     = false;
-        vme->mapid      = -1;
-        vme->swap_slot  = -1;
-        if (!spt_insert (spt, vme))
-          kill (f);
-      }
-
+  if (vme == NULL && should_grow_stack (fault_addr, f->esp))
+  {
+    vme = malloc (sizeof *vme);
     if (vme == NULL)
-        kill (f);
+      kill (f);
+    vme->vaddr      = page;
+    vme->writable   = true;
+    vme->type       = VM_ANON;
+    vme->file       = NULL;
+    vme->offset     = 0;
+    vme->read_bytes = 0;
+    vme->zero_bytes = PGSIZE;
+    vme->loaded     = false;
+    vme->mapid      = -1;
+    vme->swap_slot  = -1;
+    if (!spt_insert (spt, vme))
+      kill (f);
+  }
+
+  if (vme == NULL)
+    kill (f);
     
 
-        if (vme->swap_slot != -1) {
-          void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
-          if (kpage == NULL) 
-            kill(f);
-          if (!swap_in(vme->swap_slot, kpage))
-            kill(f);
-          vme->swap_slot = -1;
+  if (vme->swap_slot != -1) 
+  {
+    void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
+    if (kpage == NULL) 
+      kill(f);
+    if (!swap_in(vme->swap_slot, kpage))
+      kill(f);
+    vme->swap_slot = -1;
       
 
-          if (!install_page(page, kpage, vme->writable)) {
-            frame_free(kpage);
-            kill(f);
-          }
-          vme->loaded = true;
-          return;
-        }
+    if (!install_page(page, kpage, vme->writable)) {
+      frame_free(kpage);
+      kill(f);
+    }
+    vme->loaded = true;
+    return;
+  }
 
-    if (!vme->loaded)
-      {
-        void *kpage = frame_alloc (PAL_USER | PAL_ZERO);
-        if (kpage == NULL)
-          kill (f);
+  if (!vme->loaded)
+  {
+    void *kpage = frame_alloc (PAL_USER | PAL_ZERO);
+    if (kpage == NULL)
+      kill (f);
 
-        
-        switch (vme->type)
-          {
-            case VM_BIN:
-            case VM_FILE:
-              if(!lock_held_by_current_thread (&file_lock))
-                lock_acquire (&file_lock);
-                file_read_at(vme->file, kpage, vme->read_bytes, vme->offset);
-              if(lock_held_by_current_thread (&file_lock))
-                lock_release (&file_lock);
-              if (vme->zero_bytes > 0)
-                memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
-              break;
+    switch (vme->type)
+    {
+      case VM_BIN:
+      case VM_FILE:
+        if(!lock_held_by_current_thread (&file_lock))
+          lock_acquire (&file_lock);
+          file_read_at(vme->file, kpage, vme->read_bytes, vme->offset);
+        if(lock_held_by_current_thread (&file_lock))
+          lock_release (&file_lock);
+        if (vme->zero_bytes > 0)
+          memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
+        break;
 
-            case VM_ANON:
-              break;
+      case VM_ANON:
+        break;
 
-            case VM_MMAP:
-              if(!lock_held_by_current_thread (&file_lock))
-                lock_acquire (&file_lock);
-              file_read_at(vme->file, kpage, vme->read_bytes, vme->offset);
-              if(lock_held_by_current_thread (&file_lock))
-                    lock_release (&file_lock);
-              memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
-              break;
-          }
-          frame_set_rev_map(kpage, vme);
-        if (!install_page (page, kpage, vme->writable))
-          {
-            frame_free (kpage);
-            kill (f);
-          }
-
-        vme->loaded = true;
-      }
+      case VM_MMAP:
+        if(!lock_held_by_current_thread (&file_lock))
+          lock_acquire (&file_lock);
+        file_read_at(vme->file, kpage, vme->read_bytes, vme->offset);
+        if(lock_held_by_current_thread (&file_lock))
+          lock_release (&file_lock);
+        memset (kpage + vme->read_bytes, 0, vme->zero_bytes);
+        break;
+    }
+    frame_set_rev_map(kpage, vme);
+    if (!install_page (page, kpage, vme->writable))
+    {
+      frame_free (kpage);
+      kill (f);
+    }
+    vme->loaded = true;
+  }
 }
 

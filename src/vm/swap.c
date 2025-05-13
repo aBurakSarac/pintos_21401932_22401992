@@ -12,7 +12,8 @@ static struct lock swap_lock;
 static size_t swap_slots;
 
 void
-swap_init(void) {
+swap_init(void) 
+{
   swap_block = block_get_role(BLOCK_SWAP);
   ASSERT(swap_block != NULL);
 
@@ -23,13 +24,15 @@ swap_init(void) {
 }
 
 int
-swap_out(void *kpage) {
+swap_out(void *kpage) 
+{
   lock_acquire(&swap_lock);
 
   size_t slot = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
   if (slot == BITMAP_ERROR)
     PANIC("swap_out");
-  for (size_t i = 0; i < PGSIZE/BLOCK_SECTOR_SIZE; i++){
+  for (size_t i = 0; i < PGSIZE/BLOCK_SECTOR_SIZE; i++)
+  {
     block_write(swap_block, slot*(PGSIZE/BLOCK_SECTOR_SIZE)+i, kpage + i*BLOCK_SECTOR_SIZE);
   }
 
@@ -38,14 +41,17 @@ swap_out(void *kpage) {
 }
 
 bool
-swap_in(int slot, void *kpage) {
+swap_in(int slot, void *kpage) 
+{
   lock_acquire(&swap_lock);
 
-  if (slot >= swap_slots || !bitmap_test(swap_bitmap, slot)) {
+  if (slot >= swap_slots || !bitmap_test(swap_bitmap, slot)) 
+  {
     lock_release(&swap_lock);
     return false;
   }
-  for (size_t i = 0; i < PGSIZE/BLOCK_SECTOR_SIZE; i++){
+  for (size_t i = 0; i < PGSIZE/BLOCK_SECTOR_SIZE; i++)
+  {
     block_read(swap_block, slot*(PGSIZE/BLOCK_SECTOR_SIZE)+i, kpage + i*BLOCK_SECTOR_SIZE);
   }
   bitmap_reset(swap_bitmap, slot);

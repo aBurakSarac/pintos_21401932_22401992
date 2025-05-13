@@ -19,7 +19,8 @@ static struct vm_entry **frame_rev_map;
 static size_t clock_ptr;
 
 void
-frame_table_init(void) {
+frame_table_init(void) 
+{
     size_t pool_bytes = palloc_get_pool_size(PAL_USER);
     frame_count = pool_bytes / PGSIZE;
 
@@ -38,71 +39,70 @@ frame_table_init(void) {
 }
 
 void *
-frame_alloc(enum palloc_flags flag) {
-    void *kpage;
-    flag |= PAL_USER;
+frame_alloc(enum palloc_flags flag) 
+{
+  void *kpage;
+  flag |= PAL_USER;
 
-    lock_acquire(&vm_lock);
-    size_t idx = bitmap_scan_and_flip(frame_bitmap, 0, 1, false);
-    if (idx == BITMAP_ERROR) {
-        lock_release(&vm_lock);
-        return NULL;
-    }
-    kpage = palloc_get_page(flag | PAL_ZERO);
-    if (!kpage) {
-        struct vm_entry *victim = NULL;
-        while (true) {
-            victim = frame_rev_map[clock_ptr];
-            if (victim == NULL
-                || !pagedir_is_accessed(thread_current()->pagedir,
-                                        victim->vaddr))
-                break;
-            pagedir_set_accessed(thread_current()->pagedir,
-                                 victim->vaddr, false);
-            clock_ptr = (clock_ptr + 1) % frame_count;
-        }
-        idx = clock_ptr;
-        if (victim != NULL
-            && pagedir_is_dirty(thread_current()->pagedir,
-                                victim->vaddr)) {
-            int slot = swap_out(frame_kpages[idx]);
-            victim->swap_slot = slot;
-        }
-        
-
-        if (victim)
-            pagedir_clear_page(thread_current()->pagedir,
-                               victim->vaddr);
-        frame_rev_map[idx] = NULL;
-        frame_kpages[idx]  = NULL;
+  lock_acquire(&vm_lock);
+  size_t idx = bitmap_scan_and_flip(frame_bitmap, 0, 1, false);
+  if (idx == BITMAP_ERROR) 
+  {
+    lock_release(&vm_lock);
+    return NULL;
+  }
+  kpage = palloc_get_page(flag | PAL_ZERO);
+  if (!kpage) 
+  {
+    struct vm_entry *victim = NULL;
+    while (true) 
+    {
+        victim = frame_rev_map[clock_ptr];
+        if (victim == NULL || !pagedir_is_accessed(thread_current()->pagedir, victim->vaddr))
+            break;
+        pagedir_set_accessed(thread_current()->pagedir, victim->vaddr, false);
         clock_ptr = (clock_ptr + 1) % frame_count;
     }
+    idx = clock_ptr;
+    if (victim != NULL && pagedir_is_dirty(thread_current()->pagedir, victim->vaddr)) 
+    {
+      int slot = swap_out(frame_kpages[idx]);
+      victim->swap_slot = slot;
+    }
+      if (victim)
+        pagedir_clear_page(thread_current()->pagedir, victim->vaddr);
+      frame_rev_map[idx] = NULL;
+      frame_kpages[idx]  = NULL;
+      clock_ptr = (clock_ptr + 1) % frame_count;
+  }
+  frame_kpages[idx] = kpage;
+  lock_release(&vm_lock);
 
-    frame_kpages[idx] = kpage;
-    lock_release(&vm_lock);
-
-    return kpage;
+  return kpage;
 }
 
 void
-frame_free(void *kpage) {
-    if (!kpage)
-        return;
-
-    lock_acquire(&vm_lock);
-    uintptr_t base = (uintptr_t)palloc_get_pool_start(PAL_USER);
-    size_t idx = ((uintptr_t)kpage - base) / PGSIZE;
-
-    if (idx < frame_count && frame_kpages[idx] == kpage) {
-        bitmap_reset(frame_bitmap, idx);
-        frame_kpages[idx] = NULL;
-        palloc_free_page(kpage);
-    } else {
-        PANIC("frame_free");
-    }
-
-    lock_release(&vm_lock);
+frame_free(void *kpage) 
+{
+  if (!kpage)
     return;
+
+  lock_acquire(&vm_lock);
+  uintptr_t base = (uintptr_t)palloc_get_pool_start(PAL_USER);
+  size_t idx = ((uintptr_t)kpage - base) / PGSIZE;
+
+  if (idx < frame_count && frame_kpages[idx] == kpage) 
+  {
+    bitmap_reset(frame_bitmap, idx);
+    frame_kpages[idx] = NULL;
+    palloc_free_page(kpage);
+  } else 
+  {
+    PANIC("frame_free");
+  }
+
+  lock_release(&vm_lock);
+  return;
 }
 
 void

@@ -154,35 +154,33 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-    struct thread *cur = thread_current();
-    struct list_elem *e;
-    struct process_block *cinfo = NULL;
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  struct process_block *cinfo = NULL;
 
-    for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
-        struct process_block *child = list_entry(e, struct process_block, elem);
-        if (child->tid == child_tid) {
-            cinfo = child;
-            break;
-        }
+  for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
+    struct process_block *child = list_entry(e, struct process_block, elem);
+    if (child->tid == child_tid) {
+      cinfo = child;
+      break;
     }
+  }
 
-    if (cinfo == NULL || cinfo->waited) {
-        return -1;
-    }
+  if (cinfo == NULL || cinfo->waited) {
+    return -1;
+  }
 
-    cinfo->waited = true;
+  cinfo->waited = true;
 
-    /* If the child has not exited yet, block until it signals. */
-    if (!cinfo->is_exited) {
-        sema_down(&cinfo->exit_sema);
-    }
+  /* If the child has not exited yet, block until it signals. */
+  if (!cinfo->is_exited) 
+    sema_down(&cinfo->exit_sema);
 
-    int exit_code = cinfo->exit_status;
+  int exit_code = cinfo->exit_status;
+  list_remove(&cinfo->elem);
+  palloc_free_page(cinfo);
 
-    list_remove(&cinfo->elem);
-    palloc_free_page(cinfo);
-
-    return exit_code;
+  return exit_code;
 }
 
 /* Free the current process's resources. */
@@ -194,7 +192,8 @@ process_exit (void)
 
   struct list_elem *e;
   struct file_descriptor *fd = NULL;
-  while (!list_empty(&cur->open_files)) {
+  while (!list_empty(&cur->open_files)) 
+  {
     e = list_pop_front(&cur->open_files);
     fd = list_entry(e, struct file_descriptor, elem);
     lock_acquire(&file_lock);
@@ -202,6 +201,7 @@ process_exit (void)
     lock_release(&file_lock);
     free(fd);
   }
+
   if (cur->executable != NULL)
   {
     lock_acquire(&file_lock);
@@ -210,38 +210,36 @@ process_exit (void)
     lock_release(&file_lock);
   }
   while (!list_empty(&cur->mmap_list)) 
-    {
-      struct list_elem *me = list_pop_front(&cur->mmap_list);
-      struct mmap_desc *md = list_entry(me, struct mmap_desc, elem);
+  {
+    struct list_elem *me = list_pop_front(&cur->mmap_list);
+    struct mmap_desc *md = list_entry(me, struct mmap_desc, elem);
 
-      for (int i = 0; i < md->page_cnt; i++) 
+    for (int i = 0; i < md->page_cnt; i++) 
+      {
+        void *upage = md->base_addr + i * PGSIZE;
+        struct vm_entry *vme = spt_remove(&cur->spt, upage);
+        if (!vme)
+          continue;
+
+        if (vme->loaded) 
         {
-          void *upage = md->base_addr + i * PGSIZE;
-          struct vm_entry *vme = spt_remove(&cur->spt, upage);
-          if (!vme)
-            continue;
+          void *kpage = pagedir_get_page(cur->pagedir, upage);
+          if (kpage && pagedir_is_dirty(cur->pagedir, upage))
+          {
+            lock_acquire (&file_lock);
+            file_write_at(md->file, kpage, vme->read_bytes, vme->offset);
+            lock_release (&file_lock);
+          }
+          pagedir_clear_page(cur->pagedir, upage);
+          if (kpage)
+            frame_free(kpage);
+        }
 
-          if (vme->loaded) 
-            {
-              void *kpage = pagedir_get_page(cur->pagedir, upage);
-              if (kpage && pagedir_is_dirty(cur->pagedir, upage)){
-                //if(!lock_held_by_current_thread (&file_lock))
-                  lock_acquire (&file_lock);
-                file_write_at(md->file, kpage, vme->read_bytes, vme->offset);
-                //if(lock_held_by_current_thread (&file_lock))
-                  lock_release (&file_lock);
-                  //pagedir_set_dirty(cur->pagedir, upage, false);
-              }
-              pagedir_clear_page(cur->pagedir, upage);
-              if (kpage)
-                frame_free(kpage);
-            }
-
-          if (vme->swap_slot != -1)
-            swap_free(vme->swap_slot);
+        if (vme->swap_slot != -1)
+          swap_free(vme->swap_slot);
 
           free(vme);
-        }
+      }
       lock_acquire(&file_lock);
       file_allow_write(md->file);
       file_close(md->file);
@@ -256,18 +254,18 @@ process_exit (void)
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL) 
-    {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
-    }
+  {
+    /* Correct ordering here is crucial.  We must set
+       cur->pagedir to NULL before switching page directories,
+       so that a timer interrupt can't switch back to the
+       process page directory.  We must activate the base page
+       directory before destroying the process's page
+       directory, or our active page directory will be one
+       that's been freed (and cleared). */
+    cur->pagedir = NULL;
+    pagedir_activate (NULL);
+    pagedir_destroy (pd);
+  }
   printf("%s: exit(%d)\n", cur->name, cur->exit_code);
 
   struct process_block *cinfo = cur->cinfo;
@@ -308,37 +306,37 @@ typedef uint16_t Elf32_Half;
 /* Executable header.  See [ELF1] 1-4 to 1-8.
    This appears at the very beginning of an ELF binary. */
 struct Elf32_Ehdr
-  {
-    unsigned char e_ident[16];
-    Elf32_Half    e_type;
-    Elf32_Half    e_machine;
-    Elf32_Word    e_version;
-    Elf32_Addr    e_entry;
-    Elf32_Off     e_phoff;
-    Elf32_Off     e_shoff;
-    Elf32_Word    e_flags;
-    Elf32_Half    e_ehsize;
-    Elf32_Half    e_phentsize;
-    Elf32_Half    e_phnum;
-    Elf32_Half    e_shentsize;
-    Elf32_Half    e_shnum;
-    Elf32_Half    e_shstrndx;
-  };
+{
+  unsigned char e_ident[16];
+  Elf32_Half    e_type;
+  Elf32_Half    e_machine;
+  Elf32_Word    e_version;
+  Elf32_Addr    e_entry;
+  Elf32_Off     e_phoff;
+  Elf32_Off     e_shoff;
+  Elf32_Word    e_flags;
+  Elf32_Half    e_ehsize;
+  Elf32_Half    e_phentsize;
+  Elf32_Half    e_phnum;
+  Elf32_Half    e_shentsize;
+  Elf32_Half    e_shnum;
+  Elf32_Half    e_shstrndx;
+};
 
 /* Program header.  See [ELF1] 2-2 to 2-4.
    There are e_phnum of these, starting at file offset e_phoff
    (see [ELF1] 1-6). */
 struct Elf32_Phdr
-  {
-    Elf32_Word p_type;
-    Elf32_Off  p_offset;
-    Elf32_Addr p_vaddr;
-    Elf32_Addr p_paddr;
-    Elf32_Word p_filesz;
-    Elf32_Word p_memsz;
-    Elf32_Word p_flags;
-    Elf32_Word p_align;
-  };
+{
+  Elf32_Word p_type;
+  Elf32_Off  p_offset;
+  Elf32_Addr p_vaddr;
+  Elf32_Addr p_paddr;
+  Elf32_Word p_filesz;
+  Elf32_Word p_memsz;
+  Elf32_Word p_flags;
+  Elf32_Word p_align;
+};
 
 /* Values for p_type.  See [ELF1] 2-3. */
 #define PT_NULL    0            /* Ignore. */
@@ -564,59 +562,39 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
+  {
+    /* Calculate how to fill this page.
+       We will read PAGE_READ_BYTES bytes from FILE
+       and zero the final PAGE_ZERO_BYTES bytes. */
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+      
+    struct vm_entry *vme = vm_entry_create (VM_BIN,
+      upage, file, ofs,
+      page_read_bytes, page_zero_bytes, writable);
+    if (!spt_insert (&thread_current ()->spt, vme)) 
     {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      /*// Get a page of memory. 
-      uint8_t *kpage = frame_alloc (PAL_USER);
+      free (vme);
+      return false;
+    }
+    if (page_read_bytes == 0)
+    {
+      void *kpage = frame_alloc (PAL_USER | PAL_ZERO);
       if (kpage == NULL)
         return false;
-
-      // Load this page. 
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-    // Add the page to the process's address space. 
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }*/
-      
-        struct vm_entry *vme = vm_entry_create (VM_BIN,
-          upage, file, ofs,
-          page_read_bytes, page_zero_bytes, writable);
-    if (!spt_insert (&thread_current ()->spt, vme)) 
+      if (!install_page (upage, kpage, writable))
       {
-        free (vme);
+        frame_free (kpage);
         return false;
       }
-      if (page_read_bytes == 0)
-        {
-          void *kpage = frame_alloc (PAL_USER | PAL_ZERO);
-          if (kpage == NULL)
-            return false;
-          if (!install_page (upage, kpage, writable))
-            {
-              frame_free (kpage);
-              return false;
-            }
-          vme->loaded = true;
-        }
+      vme->loaded = true;
+    }
 
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
     ofs        += page_read_bytes;
     upage     += PGSIZE;
-    }
+  }
   return true;
 }
 
@@ -625,20 +603,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp, int argc, char *argv[]) 
 {
-  
   void *upage = (uint8_t *) PHYS_BASE - PGSIZE;
   struct vm_entry *vme = vm_entry_create (VM_ANON,
                               upage, NULL, 0, 0, 0, true);
   if (!vme || !spt_insert (&thread_current ()->spt, vme))
-    {
-      free (vme);
-      return false;
-    }
+  {
+    free (vme);
+    return false;
+  }
 
   
   void *kpage = frame_alloc(PAL_USER | PAL_ZERO);
   if (!kpage) return false;
-  if (!install_page(upage, kpage, true)) {
+  if (!install_page(upage, kpage, true)) 
+  {
     frame_free(kpage);
     return false;
   }
@@ -647,19 +625,22 @@ setup_stack (void **esp, int argc, char *argv[])
   char *stack_ptr = (char *)PHYS_BASE;
   uint32_t *arg_addr[CMD_ARGS_MAX];
   int i;
-  for (i = argc - 1; i >= 0; i--) {
+  for (i = argc - 1; i >= 0; i--) 
+  {
     size_t len = strlen(argv[i]) + 1; 
     stack_ptr -= len;
     memcpy(stack_ptr, argv[i], len);
     arg_addr[i] = (uint32_t *)stack_ptr;
   }
-  while ((uintptr_t)stack_ptr % 4 != 0) {
+  while ((uintptr_t)stack_ptr % 4 != 0) 
+  {
     stack_ptr--;
     *stack_ptr = 0;
   }
   stack_ptr -= 4;
   *(uint32_t *)stack_ptr = 0;
-  for (i = argc-1; i >= 0; i--) {
+  for (i = argc-1; i >= 0; i--) 
+  {
     stack_ptr -= 4;
     *(uint32_t *)stack_ptr = (uint32_t)arg_addr[i];
   }
@@ -671,7 +652,6 @@ setup_stack (void **esp, int argc, char *argv[])
   stack_ptr -= 4;
   *(uint32_t *)stack_ptr = 0;
   *esp = stack_ptr;
-
   return true;
 }
 

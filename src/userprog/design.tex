@@ -94,16 +94,16 @@
 
 \title{INF333 2024-2025 Spring Semester}
 \author{
-\textbf{\color{teal}{Pintocchio}}
-\\ Ali Burak SARAÇ <21401932@ogr.gsu.edu.tr>
-\\ Sude Melis PİLAZ <22401992@ogr.gsu.edu.tr>}
+\textbf{\color{teal}{Pintocchio}} 
+\\ Sude Melis Pilaz <22401992@ogr.gsu.edu.tr>
+\\ Ali Burak Saraç <21401932@ogr.gsu.edu.tr>}
 
 \begin{document}
 
 \maketitle
 
-\section*{\LARGE Homework II \\
-  Design Document}
+\section*{\LARGE Homework III \\
+Design Document}
 
 Please provide answers inline in a \texttt{quote} environment.
 
@@ -112,398 +112,306 @@ Please provide answers inline in a \texttt{quote} environment.
 
 \textbf{Q1:} If you have any preliminary comments on your submission, notes for the TAs, or extra credit, please give them here.
 \begin{quote}
-  We created a dedicated process\_block structure separated from thread structure. This approach helped us manage parent-child 
-relationships more effectively and simplified synchronization between processes.
-
+  Answer here
 \end{quote}
 
 
 \textbf{Q2:} Please cite any offline or online sources you consulted while preparing your
 submission, other than the Pintos documentation, course text, and lecture notes.
 \begin{quote}
-  \href{https://www.youtube.com/@DrY-Howto}{Dr. Ramesh Yarraballi's YouTube Channel}\\
-  \href{https://www.youtube.com/@soon35}{Prof. Thierry Sans's YouTube Channel}
+  Answer here
 \end{quote}
 
-\newpage
-\section{Argument Passing}
 
+\newpage
+\section{Page Table Management}
 \subsection{Data Structures}
-
-\textbf{Q3:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.
-
-Identify the purpose of each in 25 words or less.
-\begin{quote}   
-    \textbf{In process.c:}
-    \begin{itemize}
-    \item \texttt{\#define CMD\_ARGS\_MAX 32} \\
-       Maximum number of command-line arguments allowed for a process.
-    \end{itemize}
-\end{quote}
-
-\subsection{Algorithms}
-
-
-\textbf{Q4:} Briefly describe how you implemented argument parsing.  How do you arrange for the elements of \texttt{argv[]} to be in the right order? How do you avoid overflowing the stack page?
-
+\textbf{Q3:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration. Identify the purpose of each in 25 words or less.
 \begin{quote}
-Our argument parsing implementation is based on a two-phase approach. In \texttt{process\_execute()}, we first extract only the program name (\texttt{argv[0]}) using \texttt{strtok\_r()} so that the thread is created with the correct name. The full command line is then passed to \texttt{start\_process()}.
+\textbf{From page.h:}
+\begin{verbatim}
+enum vm_type { VM_BIN, VM_FILE, VM_ANON, VM_MMAP };
+\end{verbatim}
+Defines the type of virtual memory page (binary, file-backed, anonymous, or memory-mapped).
 
-In \texttt{load()}, we parse the complete command line using a helper function (\texttt{get\_args()}) which tokenizes the command string into an array of arguments (\texttt{argv}) and returns the argument count (\texttt{argc}).
+\begin{verbatim}
+struct vm_entry {
+  void *vaddr;
+  bool writable;
+  enum vm_type type;
+  struct file *file;
+  off_t offset;
+  size_t read_bytes;
+  size_t zero_bytes;
+  bool loaded;
+  struct hash_elem helem;
+};
+\end{verbatim}
+Represents a virtual page in the supplemental page table, storing metadata for loading and tracking state.
 
-For stack arrangement, \texttt{setup\_stack()} constructs the stack from high to low addresses as follows:
-\begin{itemize}
-    \item Each argument string is pushed onto the stack in reverse order (\texttt{argc-1} to 0).
-    \item The stack pointer is aligned to a 4-byte boundary using zero padding.
-    \item A null pointer sentinel (\texttt{argv[argc]}) is pushed.
-    \item Pointers to each argument string (\texttt{argv[0]} to \texttt{argv[argc-1]}) are pushed in reverse order.
-    \item The address of \texttt{argv} itself is pushed.
-    \item \texttt{argc} is pushed.
-    \item Finally, a fake return address (0) is pushed.
-\end{itemize}
+\begin{verbatim}
+struct supplemental_page_table {
+  struct hash pages;
+  struct lock page_lock;
+};
+\end{verbatim}
+Per-process hash table for tracking all virtual pages and synchronizing access.
 
-To avoid stack overflow, we define \texttt{CMD\_ARGS\_MAX} (32) to limit the number of arguments.
-
-\end{quote}
-
-\newpage
-\subsection{Rationale}
-
-\textbf{Q5:} Why does Pintos implement \texttt{strtok\_r()} but not \texttt{strtok()}?
-\begin{quote}
-Pintos uses \texttt{strtok\_r()} instead of \texttt{strtok()} because \texttt{strtok\_r()} is safe to use with many threads at the same time, but \texttt{strtok()} is not.
-
-The reason is that \texttt{strtok()} saves its progress in a static variable, so if two threads use it at once, they interfere with each other. \texttt{strtok\_r()} fixes this by letting each thread keep its own progress using an extra pointer.
-
-This is important in Pintos because different threads might need to split up command lines at the same time. For example, we use \texttt{strtok\_r()} in both \texttt{process\_execute()} and \texttt{get\_args()}, and these can run in different threads.
-\end{quote}
-
-\textbf{Q6:} In Pintos, the kernel separates commands into an executable name and arguments.  In Unix-like systems, the shell does this separation.  Identify at least two advantages of the Unix approach.
-\begin{quote}
-The Unix approach, where the shell separates the executable name and arguments before passing them to the kernel, has several advantages:
-
-1. \textbf{Simpler kernel design:} By handling command parsing in the shell, the kernel remains less complex and more focused on its core responsibilities. This reduces the likelihood of bugs and makes the kernel easier to maintain.
-
-2. \textbf{Greater flexibility for users:} The shell can provide advanced features such as wildcard expansion, variable substitution, and custom parsing rules. This allows users to have a more powerful and customizable command-line experience without requiring changes to the kernel.
-
-\end{quote}
-
-
-\section{System Calls}
-
-\subsection{Data Structures}
-
-\textbf{Q7:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less
-\begin{quote}
-  \begin{itemize}
-\item \textbf{In process.h:}
-  \begin{itemize}
-  \item \texttt{struct file\_descriptor} \\
-   Manages file descriptors for open files:
-   \begin{itemize}
-   \item \texttt{int file\_id;} - Unique identifier for the file descriptor
-   \item \texttt{struct file *file;} - Pointer to the actual file structure
-   \item \texttt{struct list\_elem elem;} - List element for open\_files list in each thread
-   \end{itemize}
-
-  \item \texttt{struct process\_block} \\
-   To help a parent process track and synchronize with a child process — including whether the child has loaded successfully, exited, and what its exit  status was.
-   \begin{itemize}
-   \item \texttt{tid\_t tid;} - Child's thread ID
-   \item \texttt{int exit\_status;} - Exit status of the child
-   \item \texttt{bool is\_exited;} - Whether the child has exited
-   \item \texttt{bool waited;} - Whether parent has waited on this child
-   \item \texttt{struct semaphore exit\_sema;} - Synchronizes parent with child's exit
-   \item \texttt{struct semaphore load\_sema;} - Synchronizes parent to child's loading
-   \item \texttt{bool load\_status;} - Success/failure of child's loading
-   \item \texttt{struct list\_elem elem;} - List element for child processes
-   \end{itemize}
-  \end{itemize}
-  
-\item \textbf{In syscall.c:}
-  \begin{itemize}
-  \item \texttt{static struct lock file\_lock;} \\
-       Global lock for synchronizing file system operations across multiple threads.
-  \end{itemize}
-    
-\item \textbf{In thread.h:}
-  \begin{itemize}
-  \item New members in \texttt{struct thread} under \texttt{\#ifdef USERPROG}:
-     \begin{itemize}
-     \item \texttt{struct list children;} - List of child processes
-     \item \texttt{struct process\_block *cinfo;} - Process information structure
-     \item \texttt{int exit\_code;} - Process exit status
-     \item \texttt{struct list open\_files;} - List of open file descriptors
-     \item \texttt{int next\_fd;} - Next available file descriptor number (starts from 2, reserving 0 and 1 for stdin and stdout)
-     \item \texttt{struct file *executable;} - Currently executing file
-     \end{itemize}
-  \end{itemize}
-\end{itemize}
-\end{quote}
-
-\newpage
-\textbf{Q8:} Describe how file descriptors are associated with open files. Are file descriptors unique within the entire OS or just within a single process?
-\begin{quote}
-In our implementation, file descriptors are linked to open files using the \texttt{file\_descriptor} structure, which holds both the file descriptor ID and a pointer to the file object. Each thread keeps its own list of open files (\texttt{open\_files}) within its thread structure.
-
-File descriptors are unique only within a single process, not across the entire operating system. Each thread has its own file descriptor numbering, starting from 0, 1 (for standard input, output), and increasing from there. The \texttt{next\_fd} field in the thread structure keeps track of the next available descriptor number for that thread.
-
-When a file is opened, the following steps occur:
-\begin{enumerate}
-    \item A new \texttt{file\_descriptor} structure is created.
-    \item The next available descriptor number from the thread's \texttt{next\_fd} counter is assigned.
-    \item The pointer to the opened file is stored.
-    \item The structure is added to the thread's \texttt{open\_files} list.
-    \item The thread's \texttt{next\_fd} counter is incremented.
-\end{enumerate}
-
-This per-thread approach allows different processes to use the same descriptor numbers for different files, ensuring isolation between threads and simplifying descriptor management.
-\end{quote}
-
-\textbf{Q9:} Describe the sequence of events when \texttt{lock\_release()} is called on a lock that a higher-priority thread is waiting for.
-\begin{quote}
-When \texttt{lock\_release()} is called on a lock that a higher-priority thread is waiting for, the following sequence of events occurs:
-
-1. The lock's \texttt{holder} field is set to \texttt{NULL}, indicating the lock is now available.
-
-2. The system checks the lock's semaphore waiters list to see if any threads are waiting.
-
-3. If waiters exist, the highest-priority waiting thread is unblocked by calling \texttt{sema\_up()} on the lock's semaphore.
-
-4. The unblocked higher-priority thread is added to the ready queue.
-
-5. Since a higher-priority thread is now ready, the scheduler is invoked to determine if a context switch is needed.
-
-6. The higher-priority thread acquires the CPU, runs \texttt{sema\_down()} to completion, and sets itself as the new lock holder.
-
-7. The original thread that released the lock may be preempted immediately if the newly unblocked thread has higher priority, implementing priority scheduling.
-
+\textbf{From thread.h:}
+\begin{verbatim}
+struct supplemental_page_table spt;
+\end{verbatim}
+Added to each thread to provide a per-process supplemental page table.
 \end{quote}
 
 
 \subsection{Algorithms}
 
-\textbf{Q10:} Describe your code for reading and writing user data from the kernel.
+\textbf{Q4:} In a few paragraphs, describe your code for accessing the data
+stored in the SPT about a given page.
+
 \begin{quote}
-Our code for reading and writing user data from the kernel is primarily implemented in the \texttt{sys\_io} function, which handles both read and write operations with a unified approach:
+In our implementation, the Supplemental Page Table (SPT) is a hash table used to keep track of virtual pages. It maps virtual addresses to their respective metadata using a hash function on the address.
 
-1. \textbf{Parameter handling}: The function takes a file descriptor (\texttt{fd}), a buffer pointer, a size, and a boolean flag indicating whether this is a write operation.
+The VM system supports several page types: binary executables (VM\_BIN), anonymous pages (VM\_ANON), and memory-mapped files (VM\_FILE, VM\_MMAP). Each has distinct handling behavior when loaded.
 
-2. \textbf{Special case for console output}: If the file descriptor is 1 (stdout) and the operation is write, we directly call \texttt{putbuf()} to output to the console after acquiring the file system lock.
+When a page fault occurs, the handler checks whether the address is valid and looks it up in the SPT. Depending on its type, it either grows the stack, loads it from a file, or restores it from swap.
 
-3. \textbf{File descriptor lookup}: For other file operations, we:
-   - Get the current thread
-   - Acquire the file system lock to ensure thread safety
-   - Iterate through the thread's open files list to find the matching file descriptor
-   - Release the lock after finding the file (or not finding it)
+The frame table holds metadata for physical frames, tracks usage, and helps select a victim frame using the clock algorithm when eviction is necessary.
 
-4. \textbf{Error handling}: If no matching file descriptor is found, we return -1 to indicate failure.
+Pages swapped out are tracked by the swap system, which maintains a bitmap of swap slots. The swap partition is accessed through the block device interface.
 
-5. \textbf{Performing I/O}: After finding the file:
-   - We reacquire the file system lock
-   - Based on the \texttt{is\_write} flag, we either:
-     - Call \texttt{file\_write()} to write data from user space to the file
-     - Call \texttt{file\_read()} to read data from the file into user space
-   - Release the lock after the operation
+For memory-mapped files, mmap and munmap are used. These functions create or remove mappings and ensure file changes are written back when needed.
 
-6. \textbf{Memory safety}: Before accessing user memory, the \texttt{syscall\_handler} validates all user-provided addresses using \texttt{check\_user\_address()}, which verifies both that the address is in user space and that it's properly mapped in the page directory.
-
-This implementation ensures thread-safe file operations while properly handling the transition between kernel and user memory spaces.
+Stack growth is handled by detecting faults near the stack pointer and allocating new pages accordingly.
 \end{quote}
 
-\newpage
-\textbf{Q11:} Suppose a system call causes a full page (4,096 bytes) of data to be copied from user space into the kernel.  What is the least and the greatest possible number of inspections of the page table (e.g. calls to \texttt{pagedir\_get\_page())} that might result?  What about for a system call that only copies 2 bytes of data?  Is there room for improvement in these numbers, and how much?
+
+\textbf{Q5:} How does your code coordinate accessed and dirty bits between kernel and user virtual addresses that alias a single frame, or alternatively how do you avoid the issue?
+
 \begin{quote}
-When a system call copies a full page of data from user space into the kernel, the least number of inspections of the page table is 1, which occurs if the entire page is already in memory and mapped correctly, check\_user\_address() would only need to check the page table once.
+In our implementation, the coordination of accessed and dirty bits between kernel and user aliases of a frame is handled by a centralized structure.
 
-The greatest number of inspections would be 4,096, where each byte of the page is inspected individually to check if it is present in memory.
+Each frame is tracked using a frame table, which includes a bitmap and reverse mapping (frame\_bitmap, frame\_kpages, and frame\_set\_rev\_map). This structure ensures a single point of truth for each physical frame regardless of how it's accessed.
 
-This would be the case if the page table is not optimized and each byte is checked separately. 
+By maintaining reverse mappings from frames to virtual memory entries, we can properly locate the page table entry and synchronize the accessed and dirty bits, even if the modification occurs through a kernel mapping.
 
-For a system call that only copies 2 bytes of data, the least number of inspections would be 1, if the page is already in memory and mapped correctly. The greatest number of inspections would be 2, if each byte is checked individually.
-
-There is room for improvement in these numbers by optimizing the page table to allow for larger chunks of data to be checked at once, rather than inspecting 4 bytes at a time. This could be done by using a more efficient data structure for the page table, or by implementing a caching mechanism to store the results of previous inspections.
+This design avoids inconsistencies and prevents the need for separate synchronization between kernel and user views of the same memory.
 \end{quote}
 
-\newpage
-\textbf{Q12:} Briefly describe your implementation of the "wait" system call and how it interacts with process termination.
-\begin{quote}
-Our implementation of the "wait" system call is centered around the \texttt{process\_wait()} function, which interacts with process termination through a synchronization mechanism:
-
-1. When a parent process calls \texttt{wait(child\_tid)}, it searches its list of children for the specified child process ID.
-
-2. If the child is found and hasn't been waited on before, the parent marks it as "waited" to prevent multiple waits on the same child.
-
-3. If the child hasn't exited yet, the parent blocks by calling \texttt{sema\_down()} on the child's exit semaphore (\texttt{exit\_sema}), which was initialized when the child was created.
-
-4. When the child process terminates in \texttt{process\_exit()}, it:
-   - Sets its exit status in the \texttt{process\_block} structure
-   - Marks itself as exited by setting \texttt{is\_exited} to true
-   - Calls \texttt{sema\_up()} on its exit semaphore to unblock the waiting parent
-
-5. After the parent is unblocked (either immediately if the child already exited, or after the child exits), it:
-   - Retrieves the child's exit status
-   - Removes the child's \texttt{process\_block} from its children list
-   - Frees the memory allocated for the child's process information
-   - Returns the exit status to the caller
-
-This implementation ensures proper synchronization between parent and child processes, allowing the parent to retrieve the child's exit status while preventing resource leaks.
-\end{quote}
-
-\newpage
-\textbf{Q13:} Any access to user program memory at a user-specified address can fail due to a bad pointer value.  Such accesses must cause the process to be terminated.  System calls are fraught with such accesses, e.g. a "write" system call requires reading the system call number from the user stack, then each of the call's three arguments, then an arbitrary amount of user memory, and any of these can fail at any point.  This poses a design and error-handling problem: how do you best avoid obscuring the primary function of code in a morass of error-handling?  Furthermore, when an error is detected, how do you ensure that all temporarily allocated resources (locks, buffers, etc.) are freed?  In a few paragraphs, describe the strategy or strategies you adopted for managing these issues.  Give an example.
-\begin{quote}
-Our approach to handling user memory access errors focuses on early validation and clean termination:
-We implemented a \texttt{check\_user\_address()} function that validates any user-provided address before it's accessed. This function verifies both that the address is in user space and that it's properly mapped in the page directory. When invalid memory is detected, we immediately terminate the process with exit code -1.
-We validate all user addresses at the beginning of system calls before acquiring locks or allocating resources. For example, in the \texttt{SYS\_WRITE} handler, we check the buffer address before attempting any file operations.\\
- The \texttt{process\_exit()} function handles cleanup of all resources (open files, memory, etc.) when a process terminates, ensuring no leaks occur even after abnormal termination.
-For example, in our \texttt{sys\_io()} function, we validate the buffer address before acquiring any locks. If validation fails, the process is terminated immediately. If validation passes but the file descriptor is invalid, we return -1 without touching any file resources. The file lock is only acquired when we're certain we have a valid file to operate on, and it's released immediately after the operation completes, ensuring it's never left in a locked state.
-\end{quote}
-
-\newpage
 \subsection{Synchronization}
 
-\textbf{Q14:} The "exec" system call returns -1 if loading the new executable fails, so it cannot return before the new executable has completed loading.  How does your code ensure this?  How is the load success/failure status passed back to the thread that calls "exec"?
+\textbf{Q6:} When two user processes both need a new frame at the same time, how are races avoided?
+
 \begin{quote}
-Our implementation ensures that the "exec" system call doesn't return before the new executable has completed loading through a synchronization mechanism using semaphores:
+Our implementation avoids race conditions in frame allocation by using a global lock. Before a process accesses the frame bitmap or table, it acquires this lock. This ensures that only one process can allocate or evict frames at a time.
 
-1. When a parent process calls \texttt{exec}, it invokes \texttt{process\_execute()}, which creates a new thread for the child process.
-
-2. During child thread creation, we initialize a \texttt{load\_sema} semaphore in the child's \texttt{process\_block} structure with a value of 0.
-
-3. The parent thread then blocks by calling \texttt{sema\_down()} on this semaphore, ensuring it won't continue until the child signals it.
-
-4. In the child's thread function (\texttt{start\_process}), it attempts to load the executable. After loading succeeds or fails, it:
-   - Sets the \texttt{load\_status} field in its \texttt{process\_block} to indicate success or failure
-   - Calls \texttt{sema\_up()} on the \texttt{load\_sema} to unblock the parent
-
-5. When the parent wakes up, it checks the \texttt{load\_status} field:
-   - If loading succeeded, it returns the child's thread ID
-   - If loading failed, it returns -1
-
-This approach ensures that the parent process waits for the child to complete loading before returning from the exec system call, while also providing a mechanism to pass the load success/failure status back to the parent thread.
-\end{quote}
-
-\textbf{Q15:} Consider parent process P with child process C.  How do you ensure proper synchronization and avoid race conditions when P calls wait(C) before C exits?  After C exits?  How do you ensure that all resources are freed in each case? How about when P terminates without waiting, before C exits?  After C exits?  Are there any special cases?
-\begin{quote}
-Our implementation ensures proper synchronization between parent and child processes through a combination of semaphores and status tracking:
-
-\textbf{When P calls wait(C) before C exits:}
-P searches its children list for C's process block
-If found, P checks if C has already been waited on (preventing multiple waits)
-If C hasn't exited yet, P blocks on C's exit semaphore (\texttt{exit\_sema})
-When C eventually exits, it signals this semaphore, unblocking P
- P then retrieves C's exit status and frees C's process block
-
-\textbf{When P calls wait(C) after C exits:}
-P finds C's process block in its children list
-Since C has already set \texttt{is\_exited} to true, P doesn't need to block
-P directly retrieves C's saved exit status
-P removes C's process block from its children list and frees it
-
-\textbf{When P terminates without waiting, before C exits:}
-P's process resources are freed, but C continues execution independently
-C's process block remains in P's children list (which is freed when P exits)
-When C eventually exits, it still updates its exit status and signals its exit semaphore
-Since P is no longer waiting, the signal has no effect, but no resources are leaked
-
-\textbf{When P terminates without waiting, after C exits:}
-C has already updated its exit status and marked itself as exited
-P's termination frees all its resources, including C's process block
-No synchronization is needed since C has already completed
-
-\textbf{Special cases:}
- If P exits while C is running, C becomes an orphan but continues execution
- P maintains separate process blocks for each child, allowing independent waiting
- If P attempts to wait on a non-existent child, it returns -1 immediately
+Once the frame is allocated, the lock is released, allowing other processes to continue. This approach guarantees mutual exclusion in critical sections, preventing inconsistencies in the frame table.
 \end{quote}
 
 \subsection{Rationale}
+\textbf{Q7:} Why did you choose the data structure(s) that you did for representing virtual-to-physical mappings?
 
-\textbf{Q16:} Why did you choose to implement access to user memory from the kernel in the way that you did?
 \begin{quote}
-We chose to implement access to user memory from the kernel using a validation-first approach with the \texttt{check\_user\_address()} function.
+We chose a hash table as the primary data structure for our supplemental page table (SPT) because it provides \texttt{O(1)} average-case lookup time, which is critical for handling page faults efficiently. Since page faults occur frequently in a virtual memory system, fast lookups directly impact overall system performance.
 
-First of all, our implementation directly validates addresses before accessing them, making the code flow easy to understand and maintain. The validation function checks that the address is in user space (\texttt{is\_user\_vaddr()}) and that it's properly mapped in the page directory (\texttt{pagedir\_get\_page()}). By validating addresses at the beginning of system calls, we can catch invalid memory accesses before performing any operations. When an invalid address is detected, we immediately terminate the process with a -1 exit code. This approach avoids complex error propagation and ensures that kernel integrity is maintained. While our implementation checks addresses in 4-byte chunks, which is sufficient for most system call arguments, we recognize that for large buffers this approach could be optimized. However, we prioritized correctness and simplicity in our implementation.
+For the frame table, we implemented a bitmap-based structure combined with an array of kernel page pointers (\texttt{frame\_kpages}). The bitmap efficiently tracks which frames are free or allocated with minimal memory overhead, while the array provides direct access to frame data. This combination allows for \texttt{O(1)} frame allocation and deallocation operations.
 
-This approach balances simplicity and correctness, though at the cost of some performance optimization opportunities.
+Our swap system uses a bitmap to track free swap slots, providing constant-time allocation and deallocation of swap space. This is important for quick eviction decisions when memory pressure is high.
+
+We considered alternatives like balanced trees (\texttt{O(log n)} lookup) for the SPT or linked lists for frame tracking, but we discarded the tree option since Pintos does not include a balanced tree implementation by default, and linked lists were not suitable due to their high memory overhead. The constant-time operations of hash tables and bitmaps made them optimal choices for our virtual memory implementation where performance is critical, especially during page faults and evictions.
+\end{quote}
+
+
+\section{Paging to and from Disk}
+
+\textbf{Q8:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less.
+\begin{quote}
+\textbf{From page.h:}
+\begin{verbatim}
+struct vm_entry {
+  int swap_slot;
+};
+\end{verbatim}
+Holds the swap slot index used when a page is evicted to swap.
+
+\textbf{From swap.c:}
+\begin{verbatim}
+static struct block *swap_block;
+static struct bitmap *swap_bitmap;
+static struct lock swap_lock;
+static size_t swap_slots;
+\end{verbatim}
+Swap system globals: swap block device, bitmap to track slot usage, lock for synchronization, and total swap slot count.
+\end{quote}
+
+
+\pagebreak
+
+\subsection{Algorithms}
+
+\textbf{Q9:} When a frame is required but none is free, some frame must be evicted.  Describe your code for choosing a frame to evict.
+\begin{quote}
+Our implementation uses the clock algorithm for frame eviction. When no free frames are available, we:
+
+\begin{itemize}
+  \item Maintain a global clock hand that points to the next frame to consider for eviction
+  \item Examine the frame at the current clock position
+  \item Using \texttt{pagedir\_is\_accessed()}, we check if the page has been accessed recently by examining the accessed bit in the page table entry
+  \item If the accessed bit is set (page was recently used):
+  \begin{itemize}
+    \item Call \texttt{pagedir\_set\_accessed()} to clear the accessed bit
+    \item Advance the clock hand to the next frame
+    \item Continue the search
+  \end{itemize}
+  \item If the accessed bit is clear (page wasn't recently used):
+  \begin{itemize}
+    \item This frame is selected for eviction
+    \item If the page is dirty, call \texttt{swap\_out()}
+    \item Return the frame for reuse
+  \end{itemize}
+\end{itemize}
+
+This approach approximates a Least Recently Used (LRU) policy while being much more efficient to implement, as it only requires a single pass through the frames to find an eviction candidate.
+\end{quote}
+
+
+
+
+\textbf{Q10:} When a process P obtains a frame that was previously used by a process Q, how do you adjust the page table (and any other data structures) to reflect the frame Q no longer has?
+\begin{quote}
+When a process \texttt{P} obtains a frame that was previously used by another process \texttt{Q}, the code first identifies the frame’s current owner using the \texttt{frame\_rev\_map}. If the frame belongs to \texttt{Q} and the page is dirty, it writes the content to swap space using \texttt{swap\_out} and updates the corresponding \texttt{vm\_entry} with the swap slot. Then, it clears \texttt{Q}'s page table entry using \texttt{pagedir\_clear\_page}, effectively removing \texttt{Q}'s access to that frame. After that, it updates the frame table by setting \texttt{frame\_rev\_map[idx]} and \texttt{frame\_kpages[idx]} to \texttt{NULL}, indicating that the frame is no longer associated with \texttt{Q}. This process ensures that \texttt{Q} no longer owns or accesses the frame, allowing \texttt{P} to safely reuse it. Later, when \texttt{P} installs its own page into this frame, the frame table is updated again to reflect \texttt{P}’s ownership.
+\end{quote}
+
+
+\textbf{Q11:} Explain your heuristic for deciding whether a page fault for an invalid virtual address should cause the stack to be extended into the page that faulted.
+\begin{quote}
+In our implementation, we decide to grow the stack only if two conditions are met. First, the faulting address must be in the user address space, which means it must be below \texttt{PHYS\_BASE}. Second, the faulting address must be close to the current stack pointer—specifically, no more than 32 bytes below it. This 32-byte margin is used to allow for common stack operations like pushing arguments or return addresses. If both conditions are satisfied, we treat the fault as a valid stack growth request and allocate a new page. Otherwise, we consider it an invalid access and terminate the process.
+\end{quote}
+
+
+\subsection{Synchronization}
+
+\textbf{Q12:} Explain the basics of your VM synchronization design.  In particular, explain how it prevents deadlock.  (Refer to the textbook for an explanation of the necessary conditions for deadlock.)
+\begin{quote}
+In our VM implementation, we use separate locks for each shared resource to ensure safe access without deadlocks. The global frame table is protected by \texttt{vm\_lock}, each thread’s supplemental page table uses its own \texttt{page\_lock}, the swap system uses \texttt{swap\_lock}, and file operations are guarded by \texttt{file\_lock}. Our code holds locks for the minimum time necessary, releasing them as soon as the critical section is complete. This reduces the chance of resource contention. And for operations that need to be atomic (like frame allocation and page table updates), we use a single lock to protect the entire operation.
+\end{quote}
+
+
+\textbf{Q13:} A page fault in process P can cause another process Q's frame to be evicted. How do you ensure that Q cannot access or modify the page during the eviction process?  How do you avoid a race between P evicting Q's frame and Q faulting the page back in?
+\begin{quote}
+To prevent races, P evicts Q’s frame while holding \texttt{vm\_lock}. It clears Q’s page table entry, so Q can’t access the frame anymore. Since both P and Q must hold \texttt{vm\_lock} to modify page mappings, Q can’t remap or access the frame until P finishes. This ensures safe eviction without conflicts.
 \end{quote}
 
 \newpage
-\textbf{Q17:} What advantages or disadvantages can you see to your design for file descriptors?
+\textbf{Q14:} Suppose a page fault in process P causes a page to be read from the file system or swap.  How do you ensure that a second process Q cannot interfere by e.g. attempting to evict the frame while it is still being read in?
 \begin{quote}
-Our file descriptor design uses a list of file descriptor structures unique for each thread, containing a unique ID and a pointer to the actual file. This approach offers several advantages and disadvantages:
-
-\textbf{Advantages:}
-Each process maintains its own file descriptor table, preventing one process from accessing another's files directly, enhancing security.
-The \texttt{next\_fd} counter in each thread provides a straightforward way to assign unique IDs without complex management.
-The list-based approach allows for relatively quick lookups when a process has a moderate number of open files.
-When a process terminates, its file descriptor list makes it easy to identify and close all files it had open.
-The design easily accommodates special file descriptors (like stdin/stdout) alongside regular files.
-
-\textbf{Disadvantages:}
-Finding a file descriptor requires iterating through the list, which becomes inefficient for processes with many open files. A hash table or array-based approach might be faster.
-Our implementation uses a global file system lock, which can become a bottleneck when multiple processes perform file operations concurrently.
-Each file descriptor requires a separate allocation, which could lead to memory fragmentation with many small allocations.
-We don't implement per-process limits on the number of open files, which could lead to resource exhaustion.
-If a process doesn't explicitly close its files, they remain open until process termination, potentially wasting system resources.
+To prevent Q from evicting a frame while P is reading a page into it, we use locks. P first reserves the frame under \texttt{vm\_lock}, so no other process can evict it. Then, P reads the data from swap or file while holding the appropriate lock (\texttt{swap\_lock} or \texttt{file\_lock}). During this time, the frame isn’t visible in \texttt{frame\_rev\_map}, so Q won’t choose it for eviction. After the read is complete, P updates \texttt{frame\_rev\_map} and the page table under \texttt{vm\_lock}. This locking order ensures Q cannot interfere during the loading process.
 \end{quote}
 
-\textbf{Q18:} The default \texttt{tid\_t} to \texttt{pid\_t} mapping is the identity mapping. If you changed it, what advantages are there to your approach?
+
+\textbf{Q15:} Explain how you handle access to paged-out pages that occur during system calls.  Do you use page faults to bring in pages (as in user programs), or do you have a mechanism for "locking" frames into physical memory, or do you use some other design?  How do you gracefully handle attempted accesses to invalid virtual addresses?
 \begin{quote}
-We kept the default identity mapping between \texttt{tid\_t} and \texttt{pid\_t}, so each thread ID is used directly as the process ID. If we had changed this mapping, this could result in allowing multiple threads to share the same process ID, implementing multi-threaded user processes. However, for our project, the identity mapping has been kept simple and effective.
+In our design, system calls use the same page fault mechanism as user programs. If a syscall accesses a paged-out user address, it triggers a page fault. The fault handler loads the page from swap or file, updates the page table, and resumes the syscall. We don’t lock pages during syscalls—frames can still be evicted safely using \texttt{vm\_lock}. If the address is invalid and not in the supplemental page table (or not eligible for stack growth), we terminate the process with \texttt{kill()}.
 \end{quote}
 
-\newpage
+
+\subsection{Rationale}
+
+\textbf{Q16:} A single lock for the whole VM system would make synchronization easy, but limit parallelism.  On the other hand, using many locks complicates synchronization and raises the possibility for deadlock but allows for high parallelism.  Explain where your design falls along this continuum and why you chose to design it this way.
+\begin{quote}
+Our design uses a few medium-sized locks instead of one big lock or many small ones. We have separate locks for the frame table (\texttt{vm\_lock}), each process’s supplemental page table (\texttt{page\_lock}), the swap system (\texttt{swap\_lock}), and file I/O (\texttt{file\_lock}). This way, different parts of the VM system can work in parallel without blocking each other too much. For example, two processes can handle their own page faults at the same time, and file reads or swap operations don’t block frame allocation. We chose this design to keep things simple and safe while still allowing some parallelism. Using one big lock would be easier but too slow, and using many small locks would be too complex and risky for deadlocks. Our approach gives a good balance between performance and safety.
+\end{quote}
+
+
+
+\section{Memory Mapped Files}
+
+\subsection{Data Structures}
+
+\textbf{Q17:} Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less.
+\begin{quote}
+\textbf{From page.h:}
+\begin{verbatim}
+enum vm_type { VM_BIN, VM_FILE, VM_ANON, VM_MMAP };
+\end{verbatim}
+Page type for memory-mapped file pages.
+
+\begin{verbatim}
+struct vm_entry {
+  int mapid;
+};
+\end{verbatim}
+Associates this page with a specific memory-mapped file region via map ID.
+
+\begin{verbatim}
+struct mmap_desc {
+  int mapid;
+  struct file *file;
+  void *base_addr;
+  size_t page_cnt;
+  struct list_elem elem;
+};
+\end{verbatim}
+Describes a mapped file region, including backing file, base virtual address, and number of pages.
+\end{quote}
+
+
+\subsection{Algorithms}
+
+\textbf{Q18:} Describe how memory mapped files integrate into your virtual memory subsystem.  Explain how the page fault and eviction processes differ between swap pages and other pages.
+\begin{quote}
+Memory-mapped files are handled as \texttt{VM\_MMAP} pages in our virtual memory system. When a process maps a file with \texttt{sys\_mmap()}, we create \texttt{vm\_entry} structures for each page and mark them as not loaded. These entries are added to the supplemental page table.
+
+When the process accesses a mapped page for the first time, a page fault occurs. If the page was evicted earlier and saved in swap, we load it back using \texttt{swap\_in()}. If not, we read the data from the file using \texttt{file\_read\_at()} and zero the rest of the page. After loading, we install the page and mark it as loaded.
+
+If a memory-mapped page is evicted, we write it to swap just like a regular anonymous page. But when the process calls \texttt{sys\_munmap()}, we check if the page was modified. If it was, we write the changes back to the file using \texttt{file\_write\_at()}. Then we clear the page, free the frame, and release the swap slot if used.
+\end{quote}
+
+
+\textbf{Q19:} Explain how you determine whether a new file mapping overlaps any existing segment.
+\begin{quote}
+To check for overlaps when mapping a new file, we first calculate how many pages the file will use. Then, we make sure the starting address is page-aligned and the entire range stays within the user address space. After that, we check each page in the range one by one using a function like \texttt{page\_already\_mapped()}, which looks it up in the supplemental page table. If any of the pages are already mapped, it means there’s an overlap with an existing segment, so we return an error and cancel the mapping.
+\end{quote}
+
+
+\subsection{Rationale}
+\textbf{Q20:} Mappings created with "mmap" have similar semantics to those of data demand-paged from executables, except that "mmap" mappings are written back to their original files, not to swap.  This implies that much of their implementation can be shared.  Explain why your implementation either does or does not share much of the code for the two situations.
+
+\begin{quote}
+In our code, memory-mapped files (\texttt{VM\_MMAP}) and executable-backed pages (\texttt{VM\_BIN} or \texttt{VM\_FILE}) use almost the same logic. When a page fault happens, we handle both types the same way: we allocate a frame, read the needed bytes from the file using \texttt{file\_read\_at()}, zero the rest if needed, and install the page with \texttt{install\_page()}. Eviction also works the same—if the page is dirty, we call \texttt{swap\_out()} and save it to swap. The only real difference is during \texttt{munmap()}: for \texttt{VM\_MMAP} pages, we check if the page was changed, and if so, we write it back to the file using \texttt{file\_write\_at()}. So overall, most of the implementation is shared, and only the write-back step for mmap pages is handled separately.
+\end{quote}
+
+
+
+
 \section{Survey Questions}
 
 Answering these questions is optional, but it will help us improve the course in future quarters.  Feel free to tell us anything you want--these questions are just to spur your thoughts.  You may also choose to respond anonymously in the course evaluations at the end of the quarter.
 
 \textbf{Q1:} In your opinion, was this assignment, or any one of the three problems in it, too easy or too hard?  Did it take too long or too little time?
 \begin{quote}
-    We sincerely believe that the assignment was very challenging. The problems were
-	complex and required a deep understanding of the Pintos operating system. The
-	assignment took a lot of time to complete, and many problems we encountered
-	were because of our lack of experience with Pintos. The main problem for this
-	project was the lack of guidance and examples. Not only the assignment but also
-	the Pintos documentation was not very helpful. We believe that the assignment
-	would be more manageable if there were more examples and guidance on how to
-	approach the problems.
+  Answer here
 \end{quote}
 
 \textbf{Q2:} Did you find that working on a particular part of the assignment gave you greater insight into some aspect of OS design?
 \begin{quote}
-
+  Answer here
 \end{quote}
 
 \textbf{Q3:} Is there some particular fact or hint we should give students in future quarters to help them solve the problems?  Conversely, did you find any of our guidance to be misleading?
 \begin{quote}
+  Answer here
 \end{quote}
 
-\newpage
-\textbf{Q4:} Do you have any suggestions for us to more effectively assist students,
-either for future semesters or the remaining projects?
+\textbf{Q4:} Do you have any suggestions for the TAs to more effectively assist students, either for future quarters or the remaining projects?
 \begin{quote}
-  Please provide more examples and guidance on how to approach the problems.
-	Sparing some time to talk, debate on the project in the classroom could be
-	an effective way to help students understand the concepts better, making the lessons
-	more interactive. Having short conversations about the common problems, key aspects
-	of the project before or after the lessons could prove to be very beneficial.
-	This is a popular method in many universities and it is proven to be very effective.
-
-    Sparing some time to talk, debate on the project in the classroom could be
-	an effective way to help students understand the concepts better, making the lessons
-	more interactive. Having short conversations about the common problems, key aspects
-	of the project before or after the lessons could prove to be very beneficial.
-	This is a popular method in many universities and it is proven to be very effective.
+  Answer here
 \end{quote}
 
 \textbf{Q5:} Any other comments?
 \begin{quote}
-Thank you for taking an interest in our feedback. We believe that the course
-	could be steered in a more beneficial direction if the suggestions we provided
-	above were taken into consideration. If the difficulty of the assignments could
-	be balanced, we believe we can learn many things from this course.
+  Answer here
 \end{quote}
 
 
