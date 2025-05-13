@@ -462,7 +462,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
                      Don't read anything from disk. */
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
-                }
+                }       
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
@@ -591,14 +591,26 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }*/
       
-    struct vm_entry *vme = vm_entry_create (VM_BIN,
-                                upage, file, ofs,
-                                page_read_bytes, page_zero_bytes, writable);
+        struct vm_entry *vme = vm_entry_create (VM_BIN,
+          upage, file, ofs,
+          page_read_bytes, page_zero_bytes, writable);
     if (!spt_insert (&thread_current ()->spt, vme)) 
       {
         free (vme);
         return false;
       }
+      if (page_read_bytes == 0)
+        {
+          void *kpage = frame_alloc (PAL_USER | PAL_ZERO);
+          if (kpage == NULL)
+            return false;
+          if (!install_page (upage, kpage, writable))
+            {
+              frame_free (kpage);
+              return false;
+            }
+          vme->loaded = true;
+        }
 
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
